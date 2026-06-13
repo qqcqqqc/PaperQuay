@@ -49,6 +49,13 @@
 
 ## Latest Update
 
+**Added by qqldsg:**
+
+- **easyScholar Integration:** Automatically fetch journal impact factors (IF), CAS partitions, CCF rankings, and university-specific journal tiers from `easyscholar.cc`. Data is displayed in real-time in both list and details views and stored persistently.
+- **Robust Translation Resumption:** Optimized full-text translation with accurate progress tracking and "resume" capability. Backend now uses parallel processing for significantly faster translation and better error handling.
+- **Dark Mode Enhancements:** Fixed visibility issues in "Dual Pane" view, image previews, table containers, and math blocks where text or backgrounds were previously unreadable in dark theme.
+- **Smart Overview Generation:** Added a confirmation prompt before regenerating an existing paper overview to prevent accidental token usage and data loss.
+
 The v0.1.23 release focuses on reader stability and daily workflow polish:
 
 - macOS now uses the native traffic-light window controls and hides duplicate custom window buttons.
