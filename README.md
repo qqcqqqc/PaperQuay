@@ -55,6 +55,10 @@
 - **Robust Translation Resumption:** Optimized full-text translation with accurate progress tracking and "resume" capability. Backend now uses parallel processing for significantly faster translation and better error handling.
 - **Dark Mode Enhancements:** Fixed visibility issues in "Dual Pane" view, image previews, table containers, and math blocks where text or backgrounds were previously unreadable in dark theme.
 - **Smart Overview Generation:** Added a confirmation prompt before regenerating an existing paper overview to prevent accidental token usage and data loss.
+- **Zotero Supplementary File Attachment:** Zotero import now groups main papers and supplementary files correctly — supplementary PDFs are attached to the main paper record instead of being imported as duplicate entries. Supports batch import with automatic attachment linking.
+- **PDF Attachment Management:** Added full attachment lifecycle support in the literature library — add PDF attachments via context menu or `+` button in the details panel, delete attachments with a themed confirm dialog, and click any attachment to open its corresponding PDF directly.
+- **Per-Attachment MinerU & Translation:** MinerU parsing and full-text translation now support selecting which PDF attachment to process (via a dropdown), enabling structured extraction and translation of supplementary materials, not just the main paper.
+- **Auto-Cleanup on Refresh:** Refreshing the library now automatically detects and removes paper records whose PDF files are no longer present on disk, keeping the library clean.
 
 The v0.1.23 release focuses on reader stability and daily workflow polish:
 
