@@ -596,8 +596,8 @@ export default function LiteraturePaperDetails({
           <div className="space-y-5">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <h2 className="text-lg font-semibold leading-7">{selectedPaper.title}</h2>
-                <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-[#a0a0a0]">
+                <h2 className="text-base font-semibold leading-relaxed">{selectedPaper.title}</h2>
+                <p className="mt-1.5 text-[13px] leading-relaxed text-slate-500 dark:text-[#a0a0a0]">
                   {paperAuthors(selectedPaper, locale)}
                 </p>
               </div>
