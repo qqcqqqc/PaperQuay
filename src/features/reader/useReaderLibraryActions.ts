@@ -852,29 +852,16 @@ export function useReaderLibraryActions({
   );
 
   const handleNativeLibraryGenerateSummary = useCallback(
-    (paper: LiteraturePaper) => {
+    (paper: LiteraturePaper, force = false) => {
       const workspaceItem = triggerNativeLibraryReaderAction(paper);
 
       if (!workspaceItem) {
         return;
       }
 
-      if (paper.aiSummary) {
-        if (
-          !window.confirm(
-            l(
-              '该文章已生成过概览，是否重新生成？',
-              'This paper already has an overview. Do you want to regenerate it?',
-            ),
-          )
-        ) {
-          return;
-        }
-      }
-
-      void generateLibraryPreview(workspaceItem, true);
+      void generateLibraryPreview(workspaceItem, force);
     },
-    [generateLibraryPreview, l, triggerNativeLibraryReaderAction],
+    [generateLibraryPreview, triggerNativeLibraryReaderAction],
   );
 
   const handleWindowMinimize = useCallback(() => {

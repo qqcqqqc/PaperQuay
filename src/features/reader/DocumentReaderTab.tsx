@@ -30,6 +30,7 @@ import {
 import { askDocumentOpenAICompatibleStream } from '../../services/qa';
 import { resolveLocalRag } from '../../services/localRag';
 import { summarizeDocumentOpenAICompatible } from '../../services/summary';
+import ThemedConfirmDialog from '../../components/ThemedConfirmDialog';
 import {
   emitJumpToNoteAnchor,
   NOTE_CHANGED_EVENT,
@@ -376,6 +377,7 @@ function DocumentReaderTab({
   const [paperSummaryError, setPaperSummaryError] = useState('');
   const [paperSummarySourceKey, setPaperSummarySourceKey] = useState('');
   const [libraryOperation, setLibraryOperation] = useState<LiteraturePaperTaskState | null>(null);
+  const [confirmRegenerateOverviewOpen, setConfirmRegenerateOverviewOpen] = useState(false);
   const [capturingScreenshot, setCapturingScreenshot] = useState(false);
   const [selectedExcerpt, setSelectedExcerpt] = useState<SelectedExcerpt | null>(null);
   const [pendingNoteAnchorInsert, setPendingNoteAnchorInsert] = useState<NoteAnchorInsertRequest | null>(null);
@@ -1767,16 +1769,8 @@ function DocumentReaderTab({
       }
 
       if (paperSummary && !force) {
-        if (
-          !window.confirm(
-            lRef.current(
-              '该文章已生成过概览，是否重新生成？',
-              'This paper already has an overview. Do you want to regenerate it?',
-            ),
-          )
-        ) {
-          return;
-        }
+        setConfirmRegenerateOverviewOpen(true);
+        return;
       }
 
       if (settings.summarySourceMode === 'mineru-markdown' && summaryBlockInputs.length === 0) {
@@ -3615,6 +3609,22 @@ function DocumentReaderTab({
         onToggleLeftSidebar={() => undefined}
         onAttachAssistant={handleAttachAssistant}
         showLibraryToggle={false}
+      />
+
+      <ThemedConfirmDialog
+        open={confirmRegenerateOverviewOpen}
+        title={lRef.current('重新生成概览', 'Regenerate Overview')}
+        description={lRef.current(
+          '该文章已生成过概览，是否重新生成？这会消耗 AI Token。',
+          'This paper already has an overview. Do you want to regenerate it? This will use AI tokens.',
+        )}
+        confirmLabel={lRef.current('重新生成', 'Regenerate')}
+        cancelLabel={lRef.current('取消', 'Cancel')}
+        onClose={() => setConfirmRegenerateOverviewOpen(false)}
+        onConfirm={() => {
+          setConfirmRegenerateOverviewOpen(false);
+          void handleGeneratePaperSummary(true, true);
+        }}
       />
     </div>
   );

@@ -25,6 +25,7 @@ import {
   type NoteChangedEventDetail,
 } from '../../app/appEvents';
 import { listLibraryPapers } from '../../services/library';
+import ThemedConfirmDialog from '../../components/ThemedConfirmDialog';
 import { useNotesStore } from '../../stores/useNotesStore';
 import { useTabsStore, type NoteTab } from '../../stores/useTabsStore';
 import type { LiteraturePaper } from '../../types/library';
@@ -665,6 +666,7 @@ export function NotesWorkspace() {
   const [expandedFolderIds, setExpandedFolderIds] = useState<Set<string>>(() => new Set());
   const [draggingNoteId, setDraggingNoteId] = useState<string | null>(null);
   const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
+  const [confirmDeleteFolder, setConfirmDeleteFolder] = useState<NoteFolder | null>(null);
   const [folderEditDraft, setFolderEditDraft] = useState<FolderEditDraft | null>(null);
   const tabs = useTabsStore((state) => state.tabs);
   const activeTabId = useTabsStore((state) => state.activeTabId);
@@ -794,14 +796,11 @@ export function NotesWorkspace() {
   }, [folderEditDraft, setTag]);
 
   const deleteFolder = useCallback((folder: NoteFolder) => {
+    setConfirmDeleteFolder(folder);
+  }, []);
+
+  const deleteFolderAfterConfirm = useCallback((folder: NoteFolder) => {
     const removedIds = new Set([folder.id, ...getFolderDescendantIds(folder.id, folders)]);
-    const hasNotes = notes.some((note) => note.folderId && removedIds.has(note.folderId));
-    const message = hasNotes
-      ? `删除“${folder.name}”及其子分类？其中的笔记会移动到未分类。`
-      : `删除“${folder.name}”及其子分类？`;
-
-    if (!window.confirm(message)) return;
-
     const previousActiveNoteId = activeNoteId;
     setFolders((current) => current.filter((item) => !removedIds.has(item.id)));
     setExpandedFolderIds((current) => {
@@ -826,6 +825,7 @@ export function NotesWorkspace() {
           if (previousActiveNoteId) setActiveNoteId(previousActiveNoteId);
         });
     }
+    setConfirmDeleteFolder(null);
   }, [activeFolderId, activeNoteId, folders, notes, setActiveNoteId, updateWorkspaceNote]);
 
   useEffect(() => {
@@ -1444,6 +1444,27 @@ export function NotesWorkspace() {
           onClose={() => setContextMenu(null)}
         />
       ) : null}
+
+      <ThemedConfirmDialog
+        open={confirmDeleteFolder !== null}
+        title="删除分类"
+        description={
+          confirmDeleteFolder
+            ? notes.some((note) => note.folderId && new Set([confirmDeleteFolder.id, ...getFolderDescendantIds(confirmDeleteFolder.id, folders)]).has(note.folderId))
+              ? `删除“${confirmDeleteFolder.name}”及其子分类？其中的笔记会移动到未分类。`
+              : `删除“${confirmDeleteFolder.name}”及其子分类？`
+            : ''
+        }
+        confirmLabel="删除"
+        cancelLabel="取消"
+        danger
+        onClose={() => setConfirmDeleteFolder(null)}
+        onConfirm={() => {
+          if (confirmDeleteFolder) {
+            deleteFolderAfterConfirm(confirmDeleteFolder);
+          }
+        }}
+      />
     </div>
   );
 }

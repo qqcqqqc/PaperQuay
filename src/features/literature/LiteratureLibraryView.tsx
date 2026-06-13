@@ -50,7 +50,7 @@ import type {
 } from '../../types/reader';
 import { getFileNameFromPath } from '../../utils/text';
 import ImportConfirmationDialog from './components/ImportConfirmationDialog';
-import LibraryConfirmDialog from './components/LibraryConfirmDialog';
+import ThemedConfirmDialog from '../../components/ThemedConfirmDialog';
 import LibraryTextInputDialog from './components/LibraryTextInputDialog';
 import {
   mergeLocalPdfMetadataIntoDraft,
@@ -108,7 +108,7 @@ interface LiteratureLibraryViewProps {
   paperActionStates?: Record<string, LiteraturePaperTaskState | null | undefined>;
   onRunMineruParse?: (paper: LiteraturePaper) => void;
   onTranslatePaper?: (paper: LiteraturePaper) => void;
-  onGenerateSummary?: (paper: LiteraturePaper) => void;
+  onGenerateSummary?: (paper: LiteraturePaper, force?: boolean) => void;
 }
 
 interface NativeSummaryUpdatedEventDetail {
@@ -187,7 +187,8 @@ type CategoryNameDialogState =
 
 type LibraryConfirmDialogState =
   | { kind: 'delete-category'; category: LiteratureCategory }
-  | { kind: 'delete-paper'; paper: LiteraturePaper; deleteFiles: boolean };
+  | { kind: 'delete-paper'; paper: LiteraturePaper; deleteFiles: boolean }
+  | { kind: 'regenerate-overview'; paper: LiteraturePaper };
 
 export default function LiteratureLibraryView({
   onOpenPaper,
@@ -1439,6 +1440,18 @@ export default function LiteratureLibraryView({
     }
   };
 
+  const handleGenerateSummary = (paper: LiteraturePaper) => {
+    if (paper.aiSummary) {
+      setConfirmDialog({
+        kind: 'regenerate-overview',
+        paper,
+      });
+      return;
+    }
+
+    onGenerateSummary?.(paper);
+  };
+
   const reloadAfterPaperUpdate = async (updatedPaper: LiteraturePaper) => {
     const [nextCategories, nextPapers] = await Promise.all([
       listLibraryCategories(),
@@ -1924,7 +1937,7 @@ export default function LiteratureLibraryView({
           actionState={selectedPaper ? paperActionStates?.[selectedPaper.id] ?? null : null}
           onRunMineruParse={onRunMineruParse}
           onTranslatePaper={onTranslatePaper}
-          onGenerateSummary={onGenerateSummary}
+          onGenerateSummary={handleGenerateSummary}
         />
       </div>
 
@@ -2192,12 +2205,14 @@ export default function LiteratureLibraryView({
         onSubmit={(value) => void handleSubmitPaperTag(value)}
       />
 
-      <LibraryConfirmDialog
+      <ThemedConfirmDialog
         open={confirmDialog !== null}
         title={
           confirmDialog?.kind === 'delete-category'
             ? l('删除分类', 'Delete Category')
-            : l('删除文献', 'Delete Paper')
+            : confirmDialog?.kind === 'delete-paper'
+              ? l('删除文献', 'Delete Paper')
+              : l('重新生成概览', 'Regenerate Overview')
         }
         description={
           confirmDialog?.kind === 'delete-category'
@@ -2209,12 +2224,19 @@ export default function LiteratureLibraryView({
                   )
                 : l(`删除“${confirmDialog.paper.title}”的文献记录？磁盘上的 PDF 文件不会被删除。`, `Delete the paper record for "${confirmDialog.paper.title}"? PDF files on disk will not be deleted.`,
                   )
-              : ''
+              : confirmDialog?.kind === 'regenerate-overview'
+                ? l(`“${confirmDialog.paper.title}”已生成过概览，是否重新生成？这会消耗 AI Token。`, `"${confirmDialog.paper.title}" already has an overview. Do you want to regenerate it? This will use AI tokens.`,
+                  )
+                : ''
         }
-        confirmLabel={l('删除', 'Delete')}
+        confirmLabel={
+          confirmDialog?.kind === 'regenerate-overview'
+            ? l('重新生成', 'Regenerate')
+            : l('删除', 'Delete')
+        }
         cancelLabel={l('取消', 'Cancel')}
         busy={dialogBusy}
-        danger
+        danger={confirmDialog?.kind !== 'regenerate-overview'}
         onClose={() => {
           if (!dialogBusy) {
             setConfirmDialog(null);
@@ -2230,7 +2252,15 @@ export default function LiteratureLibraryView({
             return;
           }
 
-          void deletePaperAfterConfirm(confirmDialog.paper, confirmDialog.deleteFiles);
+          if (confirmDialog.kind === 'delete-paper') {
+            void deletePaperAfterConfirm(confirmDialog.paper, confirmDialog.deleteFiles);
+            return;
+          }
+
+          if (confirmDialog.kind === 'regenerate-overview') {
+            onGenerateSummary?.(confirmDialog.paper, true);
+            setConfirmDialog(null);
+          }
         }}
       />
     </div>
