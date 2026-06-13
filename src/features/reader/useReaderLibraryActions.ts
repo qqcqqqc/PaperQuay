@@ -119,7 +119,8 @@ export function useReaderLibraryActions({
         continue;
       }
 
-      const paperId = workspaceId.slice('native-library:'.length);
+      // native-library:paperId 或 native-library:paperId:attachmentId
+      const paperId = workspaceId.slice('native-library:'.length).split(':')[0];
 
       if (paperId) {
         nextStates[paperId] = previewState.operation ?? null;

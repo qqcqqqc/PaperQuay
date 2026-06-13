@@ -302,8 +302,9 @@ function buildLocalLibraryItem(db, dataDir, baseAttachmentPath, row) {
   const metadataItemId = parentItemId ?? attachmentItemId;
   const attachmentKey = String(row.attachmentKey);
   const rawPath = String(row.rawPath ?? '');
+  const attachmentOwnTitle = cleanString(localFieldValue(db, attachmentItemId, 'title'));
   const title = cleanString(localFieldValue(db, metadataItemId, 'title'))
-    || cleanString(localFieldValue(db, attachmentItemId, 'title'))
+    || attachmentOwnTitle
     || 'Untitled PDF';
   const date = localFieldValue(db, metadataItemId, 'date');
 
@@ -314,7 +315,7 @@ function buildLocalLibraryItem(db, dataDir, baseAttachmentPath, row) {
     year: yearFromDate(date),
     itemType: cleanString(row.itemType) || 'attachment',
     attachmentKey,
-    attachmentTitle: undefined,
+    attachmentTitle: attachmentOwnTitle,
     attachmentFilename: attachmentFilename(rawPath),
     localPdfPath: resolveLocalAttachmentPath(dataDir, attachmentKey, rawPath, baseAttachmentPath),
   };

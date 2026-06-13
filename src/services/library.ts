@@ -140,6 +140,18 @@ export async function importPdfsToLibrary(
   }
 }
 
+export async function addAttachmentToPaper(request: {
+  paperId: string;
+  filePath: string;
+  kind?: string;
+}): Promise<LiteraturePaper> {
+  try {
+    return await invoke<LiteraturePaper>('library_add_attachment', { request });
+  } catch (error) {
+    throw new Error(toErrorMessage(error, '添加附件失败'));
+  }
+}
+
 export async function assignPaperToLibraryCategory(
   request: AssignPaperCategoryRequest,
 ): Promise<LiteraturePaper> {
@@ -167,6 +179,38 @@ export async function deleteLibraryPaper(
     await invoke('library_delete_paper', { request });
   } catch (error) {
     throw new Error(toErrorMessage(error, '删除文献记录失败'));
+  }
+}
+
+export async function deleteAllLibraryPapers(
+  deleteFiles?: boolean,
+): Promise<{ deletedCount: number }> {
+  try {
+    return await invoke<{ deletedCount: number }>('library_delete_all_papers', { request: { deleteFiles } });
+  } catch (error) {
+    throw new Error(toErrorMessage(error, '清空文献库失败'));
+  }
+}
+
+export async function cleanupMissingLibraryPapers(): Promise<{
+  deletedCount: number;
+  deletedIds: string[];
+}> {
+  try {
+    return await invoke<{ deletedCount: number; deletedIds: string[] }>('library_cleanup_missing_papers');
+  } catch (error) {
+    throw new Error(toErrorMessage(error, '清理缺失文献失败'));
+  }
+}
+
+export async function deleteLibraryAttachment(request: {
+  attachmentId: string;
+  deleteFile?: boolean;
+}): Promise<LiteraturePaper> {
+  try {
+    return await invoke<LiteraturePaper>('library_delete_attachment', { request });
+  } catch (error) {
+    throw new Error(toErrorMessage(error, '删除附件失败'));
   }
 }
 

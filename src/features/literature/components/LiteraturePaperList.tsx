@@ -584,7 +584,7 @@ export default function LiteraturePaperList({
             </div>
           </div>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-1">
             {papers.map((paper) => {
               const active = selectedPaper?.id === paper.id;
               const pdfPath = paperPdfPath(paper);
@@ -633,10 +633,10 @@ export default function LiteraturePaperList({
                     onDoubleClick={() => onOpenPaper(paper)}
                     onKeyDown={(event) => handleRowKeyDown(event, paper)}
                     className={clsx(
-                      'pq-card grid w-full cursor-grab gap-3 px-3 py-3 text-left transition active:cursor-grabbing',
+                      'pq-card grid w-full cursor-grab gap-2 px-2 py-2 text-left transition active:cursor-grabbing',
                       showReadingHeatmap
-                        ? 'grid-cols-[28px_minmax(0,1fr)_minmax(128px,160px)_72px_96px] max-[900px]:grid-cols-[28px_minmax(0,1fr)_64px_86px]'
-                        : 'grid-cols-[28px_minmax(0,1fr)_100px_110px]',
+                        ? 'grid-cols-[28px_minmax(0,1fr)_minmax(110px,160px)_48px_88px] max-[900px]:grid-cols-[28px_minmax(0,1fr)_72px_64px]'
+                        : 'grid-cols-[28px_minmax(0,1fr)_minmax(90px,120px)_48px]',
                       active
                         ? 'border-[var(--pq-accent-border-strong)] bg-[var(--pq-accent-soft)] ring-1 ring-[var(--pq-accent-ring)]'
                         : dropIndicator?.paperId === paper.id
@@ -667,7 +667,7 @@ export default function LiteraturePaperList({
                           {paper.title}
                         </span>
                       </span>
-                      <span className="mt-1 block truncate text-xs text-slate-500 dark:text-[#a0a0a0]">
+                      <span className="mt-1 block truncate text-[11px] leading-snug text-slate-500 dark:text-[#a0a0a0]">
                         {paperAuthors(paper, locale)}
                       </span>
                       <span className="mt-2 flex flex-wrap gap-1.5">
@@ -718,9 +718,6 @@ export default function LiteraturePaperList({
                           ) : null}
                         </span>
                       ) : null}
-                      <span className="mt-2 block truncate text-[11px] text-slate-400 dark:text-[#8d8d8d]">
-                        {pdfPath ? truncateMiddle(pdfPath, 68) : l('缺少 PDF 附件', 'Missing PDF attachment')}
-                      </span>
                     </span>
                     {showReadingHeatmap ? (
                       <span className="min-w-0 self-center max-[900px]:hidden">
@@ -729,11 +726,8 @@ export default function LiteraturePaperList({
                         />
                       </span>
                     ) : null}
-                    <span className="text-sm text-slate-500 dark:text-[#a0a0a0]">
+                    <span className="shrink-0 text-sm text-slate-500 dark:text-[#a0a0a0]">
                       {paper.year ?? 'n.d.'}
-                    </span>
-                    <span className="text-right text-xs text-slate-400 dark:text-[#8d8d8d]">
-                      {new Date(paper.importedAt).toLocaleDateString()}
                     </span>
                   </div>
                   {showAfterIndicator ? (

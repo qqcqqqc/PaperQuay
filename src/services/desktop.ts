@@ -110,6 +110,14 @@ export async function openExternalUrl(url: string): Promise<void> {
   }
 }
 
+export async function showItemInFolder(filePath: string): Promise<void> {
+  try {
+    await invoke('show_item_in_folder', { filePath });
+  } catch (error) {
+    throw new Error(toErrorMessage(error, '打开文件所在位置失败'));
+  }
+}
+
 export async function captureSystemScreenshot(): Promise<CapturedScreenshot | null> {
   try {
     return await invoke<CapturedScreenshot | null>('capture_system_screenshot');

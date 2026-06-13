@@ -511,6 +511,7 @@ export interface WorkspaceItem extends ZoteroLibraryItem {
   source: WorkspaceItemSource;
   workspaceId: string;
   groupKey: string;
+  extraPdfPaths?: Array<{ path: string; fileName: string }>;
 }
 
 export interface ReaderSettings {

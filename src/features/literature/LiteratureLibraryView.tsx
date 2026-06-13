@@ -9,14 +9,18 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react';
 import { createPortal } from 'react-dom';
-import { Sparkles, Star, Tag, Trash2 } from 'lucide-react';
+import { FileText, FolderOpen, Paperclip, Sparkles, Star, Tag, Trash2 } from 'lucide-react';
 import { useLocaleText } from '../../i18n/uiLanguage';
 import { localPathExists } from '../../services/desktop';
+import { showItemInFolder } from '../../services/desktop';
 import { lookupLiteratureMetadata } from '../../services/metadata';
 import { extractLocalPdfMetadataPreview } from '../../services/pdfMetadata';
 import {
+  addAttachmentToPaper,
   assignPaperToLibraryCategory,
+  cleanupMissingLibraryPapers,
   createLibraryCategory,
+  deleteLibraryAttachment,
   deleteLibraryPaper,
   deleteLibraryCategory,
   getLibrarySettings,
@@ -65,7 +69,9 @@ import LiteraturePaperList, {
 } from './components/LiteraturePaperList';
 import { flattenCategories, paperPdfPath } from './literatureUi';
 import {
+  deduplicateZoteroItems,
   filterZoteroItemsOutsideCollections,
+  splitZoteroItemGroups,
   uniqueZoteroItems,
 } from './zoteroImport';
 import {
@@ -370,6 +376,16 @@ export default function LiteratureLibraryView({
       setSelectedPaperId((current) => resolveSelectedPaperId(current, nextPapers));
       setStatusMessage(demoLibrary.statusMessage);
       return;
+    }
+
+    // 自动清理 PDF 文件已不存在的文献记录
+    try {
+      const result = await cleanupMissingLibraryPapers();
+      if (result.deletedCount > 0) {
+        console.log('Cleaned up ' + result.deletedCount + ' papers with missing PDF files');
+      }
+    } catch {
+      // 清理失败不影响正常加载
     }
 
     const [nextCategories, , allPapers] = await Promise.all([
@@ -733,7 +749,7 @@ export default function LiteratureLibraryView({
       setStatusMessage(l('正在读取 Zotero 分类树...', 'Reading Zotero collection tree...'));
       const zoteroCollections = await listLocalZoteroCollections({ dataDir });
       setStatusMessage(l('正在读取 Zotero PDF 条目...', 'Reading Zotero PDF items...'));
-      const allZoteroItems = uniqueZoteroItems(await listLocalZoteroLibraryItems({ dataDir }));
+      const allZoteroItems = deduplicateZoteroItems(uniqueZoteroItems(await listLocalZoteroLibraryItems({ dataDir })));
 
       if (zoteroCollections.length === 0 && allZoteroItems.length === 0) {
         setStatusMessage(l('没有可导入的 Zotero PDF。', 'No Zotero PDFs are available to import.'));
@@ -831,24 +847,27 @@ export default function LiteratureLibraryView({
           continue;
         }
 
-        const items = await listLocalZoteroCollectionItems({
+        const rawItems = await listLocalZoteroCollectionItems({
           dataDir,
           collectionKey: collection.collectionKey,
         });
-        collectionItems.push(...items);
+        collectionItems.push(...rawItems);
 
-        const importableItems = items.filter((item) => item.localPdfPath);
-        missingPdfCount += items.length - importableItems.length;
+        const groups = splitZoteroItemGroups(rawItems);
+        const mainItems = groups.map((g) => g.main).filter((item) => item.localPdfPath);
+        missingPdfCount += groups.reduce((sum, g) => {
+          return sum + (g.main.localPdfPath ? 0 : 1);
+        }, 0);
 
-        if (importableItems.length === 0) {
+        if (mainItems.length === 0) {
           continue;
         }
 
         const metadata = Object.fromEntries(
-          importableItems.map((item) => [item.localPdfPath as string, metadataFromZoteroItem(item)]),
+          mainItems.map((item) => [item.localPdfPath as string, metadataFromZoteroItem(item)]),
         );
         const results = await importPdfsToLibrary({
-          paths: importableItems.map((item) => item.localPdfPath as string),
+          paths: mainItems.map((item) => item.localPdfPath as string),
           targetCategoryId: categoryId,
           importMode: 'copy',
           metadata,
@@ -857,6 +876,26 @@ export default function LiteratureLibraryView({
         for (const result of results) {
           if (result.status === 'imported') {
             importedCount += 1;
+            const paperId = result.paper?.id;
+            if (paperId) {
+              const importedPath = result.sourcePath;
+              const group = groups.find((g) => g.main.localPdfPath === importedPath);
+              if (group) {
+                for (const supp of group.supplementary) {
+                  if (supp.localPdfPath) {
+                    try {
+                      await addAttachmentToPaper({
+                        paperId,
+                        filePath: supp.localPdfPath,
+                        kind: 'pdf',
+                      });
+                    } catch {
+                      // 附件导入失败不影响主流程
+                    }
+                  }
+                }
+              }
+            }
           } else if (result.status === 'duplicate') {
             duplicateCount += 1;
 
@@ -865,6 +904,24 @@ export default function LiteratureLibraryView({
                 paperId: result.existingPaperId,
                 categoryId,
               });
+
+              const importedPath = result.sourcePath;
+              const group = groups.find((g) => g.main.localPdfPath === importedPath);
+              if (group) {
+                for (const supp of group.supplementary) {
+                  if (supp.localPdfPath) {
+                    try {
+                      await addAttachmentToPaper({
+                        paperId: result.existingPaperId,
+                        filePath: supp.localPdfPath,
+                        kind: 'pdf',
+                      });
+                    } catch {
+                      // noop
+                    }
+                  }
+                }
+              }
             }
           } else {
             failedCount += 1;
@@ -872,7 +929,9 @@ export default function LiteratureLibraryView({
         }
       }
 
-      const unfiledItems = filterZoteroItemsOutsideCollections(allZoteroItems, collectionItems);
+      const unfiledRaw = filterZoteroItemsOutsideCollections(allZoteroItems, collectionItems);
+      const unfiledGroups = splitZoteroItemGroups(unfiledRaw);
+      const unfiledItems = unfiledGroups.map((g) => g.main);
       unfiledCount = unfiledItems.length;
 
       if (unfiledItems.length > 0) {
@@ -894,6 +953,26 @@ export default function LiteratureLibraryView({
           for (const result of results) {
             if (result.status === 'imported') {
               importedCount += 1;
+              const paperId = result.paper?.id;
+              if (paperId) {
+                const importedPath = result.sourcePath;
+                const group = unfiledGroups.find((g) => g.main.localPdfPath === importedPath);
+                if (group) {
+                  for (const supp of group.supplementary) {
+                    if (supp.localPdfPath) {
+                      try {
+                        await addAttachmentToPaper({
+                          paperId,
+                          filePath: supp.localPdfPath,
+                          kind: 'pdf',
+                        });
+                      } catch {
+                        // noop
+                      }
+                    }
+                  }
+                }
+              }
             } else if (result.status === 'duplicate') {
               duplicateCount += 1;
 
@@ -902,6 +981,24 @@ export default function LiteratureLibraryView({
                   paperId: result.existingPaperId,
                   categoryId: unfiledCategoryId,
                 });
+
+                const importedPath = result.sourcePath;
+                const group = unfiledGroups.find((g) => g.main.localPdfPath === importedPath);
+                if (group) {
+                  for (const supp of group.supplementary) {
+                    if (supp.localPdfPath) {
+                      try {
+                        await addAttachmentToPaper({
+                          paperId: result.existingPaperId,
+                          filePath: supp.localPdfPath,
+                          kind: 'pdf',
+                        });
+                      } catch {
+                        // noop
+                      }
+                    }
+                  }
+                }
               }
             } else {
               failedCount += 1;
@@ -986,6 +1083,10 @@ export default function LiteratureLibraryView({
 
   const handleRemoveImportDraft = (path: string) => {
     setImportDrafts((current) => current.filter((draft) => draft.path !== path));
+  };
+
+  const handleOpenPdf = (paper: LiteraturePaper) => {
+    onOpenPaper(paper);
   };
 
   const handleAutoFillImportMetadata = useCallback(
@@ -1785,6 +1886,32 @@ export default function LiteratureLibraryView({
     }
   };
 
+  const handleAddAttachmentFromContextMenu = async () => {
+    const paper = paperContextMenu?.paper;
+
+    setPaperContextMenu(null);
+
+    if (!paper) {
+      return;
+    }
+
+    const filePaths = await selectLibraryPdfFiles();
+
+    for (const filePath of filePaths) {
+      try {
+        await addAttachmentToPaper({
+          paperId: paper.id,
+          filePath,
+          kind: 'pdf',
+        });
+      } catch {
+        // noop
+      }
+    }
+
+    await refreshAll();
+  };
+
   const handleSubmitPaperTag = async (tagName: string) => {
     if (demoMode) {
       showDemoLockedMessage();
@@ -1916,7 +2043,7 @@ export default function LiteratureLibraryView({
           onImportPdfs={() => void handleImportPdfs()}
           onRefresh={() => void refreshAll()}
           onSelectPaper={setSelectedPaperId}
-          onOpenPaper={onOpenPaper}
+          onOpenPaper={handleOpenPdf}
           onPaperDragStart={handlePaperDragStart}
           onPaperReorder={(draggedPaperId, targetPaperId, placement) =>
           void handlePaperReorder(draggedPaperId, targetPaperId, placement)
@@ -1932,8 +2059,28 @@ export default function LiteratureLibraryView({
           selectedPaper={selectedPaper}
           saving={paperSaving}
           librarySettings={settings}
-          onOpenPaper={onOpenPaper}
+          onOpenPaper={handleOpenPdf}
           onSavePaper={(request) => void handleSavePaper(request)}
+          onDeleteAttachment={async (paperId, attachmentId) => {
+            try {
+              await deleteLibraryAttachment({ attachmentId, deleteFile: true });
+              await refreshAll();
+            } catch (err) {
+              setError(l('删除附件失败', 'Failed to delete attachment'));
+              console.error('deleteAttachment error:', err);
+            }
+          }}
+          onAddAttachment={async (paperId) => {
+            const filePaths = await selectLibraryPdfFiles();
+            for (const filePath of filePaths) {
+              try {
+                await addAttachmentToPaper({ paperId, filePath, kind: 'pdf' });
+              } catch {
+                // noop
+              }
+            }
+            await refreshAll();
+          }}
           actionState={selectedPaper ? paperActionStates?.[selectedPaper.id] ?? null : null}
           onRunMineruParse={onRunMineruParse}
           onTranslatePaper={onTranslatePaper}
@@ -2030,6 +2177,39 @@ export default function LiteratureLibraryView({
             >
               <Sparkles className="mr-2 h-4 w-4 text-violet-600 dark:text-violet-200" strokeWidth={1.9} />
               {l('解析元数据', 'Parse Metadata')}
+            </button>
+            <div className="my-1 border-t border-slate-100 dark:border-white/10" />
+            <button
+              type="button"
+              onClick={() => {
+                const paper = paperContextMenu.paper;
+                const pdfAttachment = paper.attachments.find(
+                  (a) => a.kind === 'pdf' && !a.missing,
+                );
+                if (pdfAttachment) {
+                  const filePath = pdfAttachment.storedPath || pdfAttachment.originalPath;
+                  if (filePath) {
+                    try {
+                      void showItemInFolder(filePath);
+                    } catch (error) {
+                      // noop
+                    }
+                  }
+                }
+                setPaperContextMenu(null);
+              }}
+              className="mt-1 flex w-full items-center rounded-xl px-3 py-2 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-100 dark:text-[#e0e0e0] dark:hover:bg-white/[0.06]"
+            >
+              <FolderOpen className="mr-2 h-4 w-4 text-sky-600 dark:text-sky-200" strokeWidth={1.9} />
+              {l('打开 PDF 所在位置', 'Open PDF Location')}
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleAddAttachmentFromContextMenu()}
+              className="mt-1 flex w-full items-center rounded-xl px-3 py-2 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-100 dark:text-[#e0e0e0] dark:hover:bg-white/[0.06]"
+            >
+              <Paperclip className="mr-2 h-4 w-4 text-emerald-600 dark:text-emerald-200" strokeWidth={1.9} />
+              {l('添加附件', 'Add Attachment')}
             </button>
             <div className="my-1 border-t border-slate-100 dark:border-white/10" />
             <button

@@ -106,6 +106,14 @@ function createFileCommands(context) {
       await shell.openExternal(trimmed);
     },
 
+    async show_item_in_folder({ filePath }, event) {
+      const filePathClean = cleanString(filePath);
+      if (!filePathClean) {
+        throw new Error('File path is empty');
+      }
+      await shell.showItemInFolder(filePathClean);
+    },
+
     async select_directory({ title }, event) {
       const win = BrowserWindow.fromWebContents(event.sender);
       const result = await dialog.showOpenDialog(win, { title, properties: ['openDirectory'] });

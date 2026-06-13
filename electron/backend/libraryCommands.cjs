@@ -566,6 +566,53 @@ function createLibraryCommands(context) {
       return paper;
     },
 
+    async library_add_attachment({ request }) {
+      const library = store.load();
+      const paper = library.papers.find((item) => item.id === request.paperId);
+      if (!paper) throw new Error('Paper does not exist');
+
+      const storageDir = library.settings.storageDir || path.join(appPaths.dataDir, 'paperquay-data');
+      await fsp.mkdir(storageDir, { recursive: true });
+      const sourcePath = cleanString(request.filePath);
+      await ensureFile(sourcePath);
+
+      const bytes = await fsp.readFile(sourcePath);
+      const contentHash = hashBytes(bytes);
+      const attachmentId = id('att');
+      const fileName = safeFileName(fileNameFromPath(sourcePath));
+      const importMode = request.importMode || library.settings.importMode || 'keep';
+      let storedPath = sourcePath;
+      let relativePath = null;
+
+      if (importMode !== 'keep') {
+        storedPath = path.join(storageDir, `${attachmentId}-${fileName}`);
+        if (importMode === 'move') await fsp.rename(sourcePath, storedPath);
+        else await fsp.copyFile(sourcePath, storedPath);
+        relativePath = path.relative(storageDir, storedPath);
+      }
+
+      const stat = await fsp.stat(storedPath);
+      const attachment = {
+        id: attachmentId,
+        paperId: request.paperId,
+        kind: request.kind || 'pdf',
+        originalPath: sourcePath,
+        storedPath,
+        relativePath,
+        fileName,
+        mimeType: 'application/pdf',
+        fileSize: stat.size,
+        contentHash,
+        createdAt: now(),
+        missing: false,
+      };
+
+      paper.attachments.push(attachment);
+      paper.updatedAt = now();
+      await store.save(library);
+      return paper;
+    },
+
     async library_delete_paper({ request }) {
       const library = store.load();
       const paper = library.papers.find((item) => item.id === request.paperId);
@@ -597,6 +644,72 @@ function createLibraryCommands(context) {
 
       await store.save(library);
       return attachment;
+    },
+
+    async library_delete_all_papers({ request = {} }) {
+      const library = store.load();
+      const deleteFiles = Boolean(request.deleteFiles);
+      const deletedCount = library.papers.length;
+
+      if (deleteFiles) {
+        for (const paper of library.papers) {
+          for (const attachment of paper.attachments) {
+            await fsp.rm(attachment.storedPath, { force: true }).catch(() => {});
+          }
+        }
+      }
+
+      library.papers = [];
+      await store.save(library);
+      return { deletedCount };
+    },
+
+    async library_cleanup_missing_papers() {
+      const library = store.load();
+      const deletedIds = [];
+
+      for (const paper of [...library.papers]) {
+        let hasValidAttachment = false;
+
+        for (const attachment of paper.attachments) {
+          if (attachment.missing) continue;
+          try {
+            await fsp.access(attachment.storedPath);
+            hasValidAttachment = true;
+            break;
+          } catch {
+            // file not accessible
+          }
+        }
+
+        if (!hasValidAttachment) {
+          deletedIds.push(paper.id);
+          library.papers = library.papers.filter((p) => p.id !== paper.id);
+        }
+      }
+
+      if (deletedIds.length > 0) {
+        await store.save(library);
+      }
+
+      return { deletedCount: deletedIds.length, deletedIds };
+    },
+
+    async library_delete_attachment({ request }) {
+      const library = store.load();
+      const paper = library.papers.find((item) => item.attachments.some((a) => a.id === request.attachmentId));
+      if (!paper) throw new Error('Attachment does not exist');
+
+      const attachment = paper.attachments.find((a) => a.id === request.attachmentId);
+
+      paper.attachments = paper.attachments.filter((a) => a.id !== request.attachmentId);
+
+      if (request.deleteFile && attachment) {
+        await fsp.rm(attachment.storedPath, { force: true }).catch(() => {});
+      }
+
+      await store.save(library);
+      return paper;
     },
 
     async lookup_literature_metadata({ request }) {

@@ -926,14 +926,43 @@ export function createStandaloneItem(path: string, locale: UiLanguage): Workspac
 }
 
 export function createNativeLibraryWorkspaceItem(paper: LiteraturePaper): WorkspaceItem | null {
-  const resolvedAttachment = resolvePaperPdfAttachment(paper);
+  const targetAttachmentId = (paper as any)._targetAttachmentId;
+  let resolvedAttachment: ReturnType<typeof resolvePaperPdfAttachment>;
+  let attachmentKey: string | undefined;
+
+  if (targetAttachmentId) {
+    const targetAtt = paper.attachments.find((a) => a.id === targetAttachmentId);
+    if (targetAtt) {
+      const filePath = targetAtt.storedPath || targetAtt.originalPath || '';
+      if (filePath) {
+        resolvedAttachment = { attachment: targetAtt, path: filePath };
+        attachmentKey = targetAtt.id;
+      } else {
+        resolvedAttachment = resolvePaperPdfAttachment(paper);
+      }
+    } else {
+      resolvedAttachment = resolvePaperPdfAttachment(paper);
+    }
+  } else {
+    resolvedAttachment = resolvePaperPdfAttachment(paper);
+  }
 
   if (!resolvedAttachment) {
     return null;
   }
 
   const { attachment, path } = resolvedAttachment;
-  const workspaceId = `native-library:${paper.id}`;
+  // 附件切换时使用唯一 workspaceId，强制开新 tab + 独立 MinerU 缓存
+  const workspaceId = `native-library:${paper.id}${attachmentKey ? ':' + attachmentKey : ''}`;
+
+  // 收集附加 PDF（补充材料）
+  const extraPdfPaths = paper.attachments
+    .filter((att) => att.id !== attachment.id && att.kind === 'pdf' && !att.missing)
+    .map((att) => {
+      const filePath = att.storedPath || att.originalPath || '';
+      return filePath ? { path: filePath, fileName: att.fileName } : null;
+    })
+    .filter((item): item is { path: string; fileName: string } => item !== null);
 
   return {
     itemKey: paper.id,
@@ -945,6 +974,7 @@ export function createNativeLibraryWorkspaceItem(paper: LiteraturePaper): Worksp
     itemType: 'pdf',
     attachmentFilename: attachment.fileName,
     localPdfPath: path,
+    extraPdfPaths: extraPdfPaths.length > 0 ? extraPdfPaths : undefined,
     source: 'native-library',
     workspaceId,
     groupKey: workspaceId,

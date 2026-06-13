@@ -96,24 +96,10 @@ export function ReaderWorkspaceOverview({
         <div className="space-y-5">
           <section
             data-tour="overview-actions"
-            className="rounded-[30px] border border-white/70 bg-[linear-gradient(135deg,rgba(255,255,255,0.9),rgba(248,250,252,0.78))] p-6 shadow-[0_24px_60px_rgba(15,23,42,0.08)] backdrop-blur-xl"
+            className="relative rounded-[30px] border border-white/70 bg-[linear-gradient(135deg,rgba(255,255,255,0.9),rgba(248,250,252,0.78))] p-6 pb-4 shadow-[0_24px_60px_rgba(15,23,42,0.08)] backdrop-blur-xl"
           >
-            <div className="flex flex-wrap items-start justify-between gap-5">
-              <div className="min-w-0 flex-1">
-                <div className="inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-medium text-indigo-600">
-                  {l('论文概览', 'Paper Overview')}
-                </div>
-                <h2 className="mt-4 text-[30px] font-semibold tracking-tight text-slate-950">
-                  {currentDocument.title}
-                </h2>
-                <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-slate-500">
-                  <span>{currentDocument.creators || l('未知作者', 'Unknown Author')}</span>
-                  {currentDocument.year ? <span>· {currentDocument.year}</span> : null}
-                  <span>· {sourceLabel}</span>
-                </div>
-              </div>
-
-              <div className="flex shrink-0 flex-wrap gap-2">
+            <div className="overflow-hidden">
+              <div className="mb-2 flex shrink-0 flex-wrap gap-2 xl:float-right xl:ml-4 xl:mb-2">
                 <button
                   type="button"
                   onClick={onEnterReading}
@@ -155,6 +141,17 @@ export function ReaderWorkspaceOverview({
                       : l('取消翻译', 'Cancel Translation')
                     : l('翻译全文', 'Translate Document')}
                 </button>
+              </div>
+              <div className="inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-medium text-indigo-600">
+                {l('论文概览', 'Paper Overview')}
+              </div>
+              <h2 className="mt-3 text-2xl font-semibold leading-snug tracking-tight text-slate-950">
+                {currentDocument.title}
+              </h2>
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-slate-500">
+                <span>{currentDocument.creators || l('未知作者', 'Unknown Author')}</span>
+                {currentDocument.year ? <span>· {currentDocument.year}</span> : null}
+                <span>· {sourceLabel}</span>
               </div>
             </div>
           </section>

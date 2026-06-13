@@ -1,19 +1,25 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import {
   AlertCircle,
   BookOpenText,
   ChevronRight,
   CheckCircle2,
   FileText,
+  FolderOpen,
   Languages,
   Loader2,
+  Paperclip,
   Pencil,
+  Plus,
   Save,
   Sparkles,
   Star,
+  Trash2,
   X,
 } from 'lucide-react';
 import { useAppLocale, useLocaleText } from '../../../i18n/uiLanguage';
+import { showItemInFolder } from '../../../services/desktop';
 import { useWheelScrollDelegate } from '../../../hooks/useWheelScrollDelegate';
 import type {
   LibrarySettings,
@@ -44,6 +50,8 @@ interface LiteraturePaperDetailsProps {
   librarySettings: LibrarySettings | null;
   onOpenPaper: (paper: LiteraturePaper) => void;
   onSavePaper: (request: UpdatePaperRequest) => void;
+  onDeleteAttachment?: (paperId: string, attachmentId: string) => void;
+  onAddAttachment?: (paperId: string) => void;
   actionState?: LiteraturePaperTaskState | null;
   onRunMineruParse?: (paper: LiteraturePaper) => void;
   onTranslatePaper?: (paper: LiteraturePaper) => void;
@@ -476,6 +484,8 @@ export default function LiteraturePaperDetails({
   librarySettings,
   onOpenPaper,
   onSavePaper,
+  onDeleteAttachment,
+  onAddAttachment,
   actionState,
   onRunMineruParse,
   onTranslatePaper,
@@ -491,6 +501,23 @@ export default function LiteraturePaperDetails({
   const [readingHeatmap, setReadingHeatmap] = useState<PdfReadingHeatmap | null>(() =>
     latestReadingHeatmapForPaper(selectedPaper?.id),
   );
+  const [mineruPdfSelector, setMineruPdfSelector] = useState<{
+    paper: LiteraturePaper;
+  } | null>(null);
+  const [translatePdfSelector, setTranslatePdfSelector] = useState<{
+    paper: LiteraturePaper;
+  } | null>(null);
+  const [attachmentContextMenu, setAttachmentContextMenu] = useState<{
+    paperId: string;
+    attachmentId: string;
+    filePath: string;
+    x: number;
+    y: number;
+  } | null>(null);
+  const [attachmentDeleteConfirm, setAttachmentDeleteConfirm] = useState<{
+    paperId: string;
+    attachmentId: string;
+  } | null>(null);
 
   const displayItems = librarySettings?.easyScholarDisplayItems || [];
 
@@ -594,23 +621,23 @@ export default function LiteraturePaperDetails({
       >
         {selectedPaper ? (
           <div className="space-y-5">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <h2 className="text-base font-semibold leading-relaxed">{selectedPaper.title}</h2>
-                <p className="mt-1.5 text-[13px] leading-relaxed text-slate-500 dark:text-[#a0a0a0]">
-                  {paperAuthors(selectedPaper, locale)}
-                </p>
-              </div>
+            <div className="mb-4 min-w-0">
+              <h2 className="text-base font-semibold leading-relaxed">{selectedPaper.title}</h2>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-slate-500 dark:text-[#a0a0a0]">
+                {paperAuthors(selectedPaper, locale)}
+              </p>
+            </div>
 
-              <div className="flex shrink-0 items-center gap-2">
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={handleToggleFavorite}
                   disabled={saving}
                   className={
                     selectedPaper.isFavorite
-                      ? 'pq-icon-button h-9 w-9 border border-amber-300/70 bg-amber-100 text-amber-700 disabled:opacity-60 dark:border-amber-300/25 dark:bg-amber-300/14 dark:text-amber-200'
-                      : 'pq-icon-button h-9 w-9 border border-[var(--pq-border)] bg-white/65 text-[var(--pq-text-faint)] disabled:opacity-60'
+                      ? 'pq-icon-button h-10 w-10 border border-amber-300/70 bg-amber-100 text-amber-700 disabled:opacity-60 dark:border-amber-300/25 dark:bg-amber-300/14 dark:text-amber-200'
+                      : 'pq-icon-button h-10 w-10 border border-[var(--pq-border)] bg-white/65 text-[var(--pq-text-faint)] disabled:opacity-60'
                   }
                   title={selectedPaper.isFavorite ? l('取消收藏', 'Remove from favorites') : l('加入收藏', 'Add to favorites')}
                   aria-label={selectedPaper.isFavorite ? l('取消收藏', 'Remove from favorites') : l('加入收藏', 'Add to favorites')}
@@ -622,7 +649,7 @@ export default function LiteraturePaperDetails({
                   type="button"
                   onClick={() => setEditing((current) => !current)}
                   disabled={saving}
-                  className="pq-button px-3 py-2 text-xs"
+                  className="pq-button h-10 shrink-0 px-3 py-2 text-xs"
                 >
                   {editing ? (
                     <X className="mr-1.5 h-3.5 w-3.5" strokeWidth={1.9} />
@@ -631,18 +658,17 @@ export default function LiteraturePaperDetails({
                   )}
                   {editing ? l('取消', 'Cancel') : l('编辑', 'Edit')}
                 </button>
-              </div>
-            </div>
 
-            <div className="space-y-3">
-              <ActionButton
-                primary
-                disabled={!hasPdf}
-                icon={<BookOpenText className="h-4 w-4" strokeWidth={1.9} />}
-                onClick={() => onOpenPaper(selectedPaper)}
-              >
-                {l('打开阅读', 'Open Reader')}
-              </ActionButton>
+                <button
+                  type="button"
+                  onClick={() => onOpenPaper(selectedPaper)}
+                  disabled={!hasPdf || saving}
+                  className="pq-button-primary h-10 shrink-0 flex-1 px-3 py-2 text-xs"
+                >
+                  <BookOpenText className="mr-1.5 h-3.5 w-3.5" strokeWidth={1.9} />
+                  {l('打开阅读', 'Open Reader')}
+                </button>
+              </div>
 
               <section className="pq-card p-3">
                 <div className="mb-2.5 flex items-center justify-between gap-3 px-1">
@@ -657,34 +683,110 @@ export default function LiteraturePaperDetails({
                 </div>
 
                 <div className="space-y-2">
-                  <ProcessingActionTile
-                    dataTour="overview-mineru-parse"
-                    disabled={isPaperPipelineActionDisabled({
-                      hasPdf,
-                      hasHandler: Boolean(onRunMineruParse),
-                      actionState,
-                    })}
-                    active={activeTaskKind === 'mineru'}
-                    busy={pipelineBusy && activeTaskKind === 'mineru'}
-                    icon={<Sparkles className="h-4 w-4" strokeWidth={1.9} />}
-                    onClick={() => onRunMineruParse?.(selectedPaper)}
-                    title={l('MinerU 解析', 'MinerU Parse')}
-                    description={l('提取结构化文本和版面块', 'Extract structured text and layout blocks')}
-                  />
-                  <ProcessingActionTile
-                    dataTour="overview-translate-document"
-                    disabled={isPaperPipelineActionDisabled({
-                      hasPdf,
-                      hasHandler: Boolean(onTranslatePaper),
-                      actionState,
-                    })}
-                    active={activeTaskKind === 'translation'}
-                    busy={pipelineBusy && activeTaskKind === 'translation'}
-                    icon={<Languages className="h-4 w-4" strokeWidth={1.9} />}
-                    onClick={() => onTranslatePaper?.(selectedPaper)}
-                    title={l('全文翻译', 'Full Translation')}
-                    description={l('将结构化内容翻译为双语文本', 'Translate structured blocks into bilingual text')}
-                  />
+                  <div className="relative">
+                    <ProcessingActionTile
+                      dataTour="overview-mineru-parse"
+                      disabled={isPaperPipelineActionDisabled({
+                        hasPdf,
+                        hasHandler: Boolean(onRunMineruParse),
+                        actionState,
+                      })}
+                      active={activeTaskKind === 'mineru'}
+                      busy={pipelineBusy && activeTaskKind === 'mineru'}
+                      icon={<Sparkles className="h-4 w-4" strokeWidth={1.9} />}
+                      onClick={() => {
+                        const pdfs = selectedPaper?.attachments.filter((a) => a.kind === 'pdf' && !a.missing) ?? [];
+                        if (pdfs.length > 1) {
+                          setMineruPdfSelector({ paper: selectedPaper });
+                        } else {
+                          onRunMineruParse?.(selectedPaper);
+                        }
+                      }}
+                      title={l('MinerU 解析', 'MinerU Parse')}
+                      description={l('提取结构化文本和版面块', 'Extract structured text and layout blocks')}
+                    />
+                    {mineruPdfSelector ? (
+                      <div className="absolute left-0 top-full z-50 mt-1 w-64 rounded-xl border border-[var(--pq-border)] bg-white p-1.5 shadow-lg dark:bg-[var(--pq-bg-primary)]"
+                        onMouseLeave={() => setMineruPdfSelector(null)}
+                      >
+                        <div className="px-3 py-1.5 text-xs text-[var(--pq-text-muted)]">
+                          {l('选择要解析的 PDF', 'Select PDF to parse')}
+                        </div>
+                        {mineruPdfSelector.paper.attachments
+                          .filter((a) => a.kind === 'pdf' && !a.missing)
+                          .map((att, idx) => (
+                            <button
+                              key={att.id}
+                              type="button"
+                              className="mt-0.5 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm transition hover:bg-slate-100 dark:hover:bg-white/[0.06]"
+                              onClick={() => {
+                                const withTarget = { ...mineruPdfSelector.paper, attachments: [...mineruPdfSelector.paper.attachments] } as any;
+                                withTarget._targetAttachmentId = att.id;
+                                setMineruPdfSelector(null);
+                                onRunMineruParse?.(withTarget as LiteraturePaper);
+                              }}
+                            >
+                              <FileText className="h-4 w-4 shrink-0 text-slate-400" />
+                              <span className="min-w-0 flex-1 truncate">
+                                {idx === 0 ? l('主 PDF', 'Main PDF') : att.fileName}
+                              </span>
+                            </button>
+                          ))}
+                      </div>
+                    ) : null}
+                  </div>
+                  <div className="relative">
+                    <ProcessingActionTile
+                      dataTour="overview-translate-document"
+                      disabled={isPaperPipelineActionDisabled({
+                        hasPdf,
+                        hasHandler: Boolean(onTranslatePaper),
+                        actionState,
+                      })}
+                      active={activeTaskKind === 'translation'}
+                      busy={pipelineBusy && activeTaskKind === 'translation'}
+                      icon={<Languages className="h-4 w-4" strokeWidth={1.9} />}
+                      onClick={() => {
+                        const pdfs = selectedPaper?.attachments.filter((a) => a.kind === 'pdf' && !a.missing) ?? [];
+                        if (pdfs.length > 1) {
+                          setTranslatePdfSelector({ paper: selectedPaper });
+                        } else {
+                          onTranslatePaper?.(selectedPaper);
+                        }
+                      }}
+                      title={l('全文翻译', 'Full Translation')}
+                      description={l('将结构化内容翻译为双语文本', 'Translate structured blocks into bilingual text')}
+                    />
+                    {translatePdfSelector ? (
+                      <div className="absolute left-0 top-full z-50 mt-1 w-64 rounded-xl border border-[var(--pq-border)] bg-white p-1.5 shadow-lg dark:bg-[var(--pq-bg-primary)]"
+                        onMouseLeave={() => setTranslatePdfSelector(null)}
+                      >
+                        <div className="px-3 py-1.5 text-xs text-[var(--pq-text-muted)]">
+                          {l('选择要翻译的 PDF', 'Select PDF to translate')}
+                        </div>
+                        {translatePdfSelector.paper.attachments
+                          .filter((a) => a.kind === 'pdf' && !a.missing)
+                          .map((att, idx) => (
+                            <button
+                              key={att.id}
+                              type="button"
+                              className="mt-0.5 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm transition hover:bg-slate-100 dark:hover:bg-white/[0.06]"
+                              onClick={() => {
+                                const withTarget = { ...translatePdfSelector.paper, attachments: [...translatePdfSelector.paper.attachments] } as any;
+                                withTarget._targetAttachmentId = att.id;
+                                setTranslatePdfSelector(null);
+                                onTranslatePaper?.(withTarget as LiteraturePaper);
+                              }}
+                            >
+                              <FileText className="h-4 w-4 shrink-0 text-slate-400" />
+                              <span className="min-w-0 flex-1 truncate">
+                                {idx === 0 ? l('主 PDF', 'Main PDF') : att.fileName}
+                              </span>
+                            </button>
+                          ))}
+                      </div>
+                    ) : null}
+                  </div>
                   <ProcessingActionTile
                     dataTour="generate-summary"
                     disabled={isPaperPipelineActionDisabled({
@@ -842,6 +944,69 @@ export default function LiteraturePaperDetails({
                   </div>
                 </dl>
 
+                {selectedPaper.attachments.length > 1 ? (
+                  <section className="pq-card p-4">
+                    <div className="mb-2 flex items-center justify-between">
+                      <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400 dark:text-[#8d8d8d]">
+                        <Paperclip className="-mt-0.5 mr-1 inline h-3.5 w-3.5" strokeWidth={1.8} />
+                        {l('PDF 附件', 'PDF Attachments')}
+                      </div>
+                      {onAddAttachment ? (
+                        <button
+                          type="button"
+                          onClick={() => onAddAttachment(selectedPaper.id)}
+                          className="flex h-6 w-6 items-center justify-center rounded-lg bg-slate-100 text-slate-500 transition hover:bg-slate-200 dark:bg-white/[0.06] dark:text-[#a0a0a0] dark:hover:bg-white/[0.1]"
+                          title={l('添加附件', 'Add Attachment')}
+                        >
+                          <Plus className="h-3.5 w-3.5" strokeWidth={2.2} />
+                        </button>
+                      ) : null}
+                    </div>
+                    <div className="space-y-1.5">
+                      {selectedPaper.attachments.map((att, index) => (
+                        <button
+                          key={att.id}
+                          type="button"
+                          onClick={() => {
+                            if (index === 0) {
+                              onOpenPaper(selectedPaper);
+                            } else {
+                              const withTarget = { ...selectedPaper, attachments: [...selectedPaper.attachments] } as any;
+                              withTarget._targetAttachmentId = att.id;
+                              onOpenPaper(withTarget as LiteraturePaper);
+                            }
+                          }}
+                          onContextMenu={(e) => {
+                            e.preventDefault();
+                            if (index === 0 || !onDeleteAttachment) return;
+                            const fp = att.storedPath || att.originalPath || '';
+                            setAttachmentContextMenu({
+                              paperId: selectedPaper.id,
+                              attachmentId: att.id,
+                              filePath: fp,
+                              x: e.clientX,
+                              y: e.clientY,
+                            });
+                          }}
+                          className="flex w-full items-center gap-2 rounded-lg bg-white/60 px-3 py-2 text-sm transition hover:bg-slate-100 dark:bg-white/[0.04] dark:hover:bg-white/[0.08]"
+                        >
+                          <FileText className="h-4 w-4 shrink-0 text-slate-400" strokeWidth={1.8} />
+                          <span className="min-w-0 flex-1 truncate text-slate-700 dark:text-[#e0e0e0]">
+                            {index === 0
+                              ? l('主 PDF', 'Main PDF')
+                              : att.fileName || l('补充材料', 'Supplementary')}
+                          </span>
+                          {index > 0 ? (
+                            <span className="shrink-0 rounded-full border border-amber-300/45 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:border-amber-300/18 dark:bg-amber-300/10 dark:text-amber-100">
+                              {l('附件', 'Supplement')}
+                            </span>
+                          ) : null}
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+                ) : null}
+
                 <LiteratureReadingTimeChart heatmap={readingHeatmap} />
 
                 {selectedPaper.keywords.length > 0 ? (
@@ -969,6 +1134,96 @@ export default function LiteraturePaperDetails({
             {l('选择一篇文献查看详情。', 'Select a paper to view details.')}
           </div>
         )}
+
+        {attachmentContextMenu ? createPortal(
+          <div
+            className="fixed inset-0 z-[10000]"
+            onClick={() => setAttachmentContextMenu(null)}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              setAttachmentContextMenu(null);
+            }}
+          >
+            <div
+              className="pq-acrylic fixed w-56 p-1.5"
+              style={{
+                left: attachmentContextMenu.x,
+                top: attachmentContextMenu.y,
+              }}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  const ctx = attachmentContextMenu;
+                  setAttachmentContextMenu(null);
+                  if (ctx.filePath) {
+                    void showItemInFolder(ctx.filePath);
+                  }
+                }}
+                className="mt-1 flex w-full items-center rounded-xl px-3 py-2 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-100 dark:text-[#e0e0e0] dark:hover:bg-white/[0.06]"
+              >
+                <FolderOpen className="mr-2 h-4 w-4 text-sky-600 dark:text-sky-200" strokeWidth={1.9} />
+                {l('打开 PDF 所在位置', 'Open PDF Location')}
+              </button>
+              <div className="my-1 border-t border-slate-100 dark:border-white/10" />
+              <button
+                type="button"
+                onClick={() => {
+                  const ctx = attachmentContextMenu;
+                  setAttachmentContextMenu(null);
+                  setAttachmentDeleteConfirm({ paperId: ctx.paperId, attachmentId: ctx.attachmentId });
+                }}
+                className="flex w-full items-center rounded-xl px-3 py-2 text-left text-sm font-medium text-rose-600 transition hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-rose-400/10"
+              >
+                <Trash2 className="mr-2 h-4 w-4" strokeWidth={1.9} />
+                {l('删除附件', 'Delete Attachment')}
+              </button>
+            </div>
+          </div>,
+          document.body,
+        ) : null}
+
+        {attachmentDeleteConfirm ? createPortal(
+          <div
+            className="fixed inset-0 z-[10001] flex items-center justify-center bg-slate-950/30 p-4 backdrop-blur-[2px]"
+            onMouseDown={() => setAttachmentDeleteConfirm(null)}
+          >
+            <div
+              className="pq-card w-[min(380px,calc(100vw-32px))] p-5 shadow-[var(--pq-shadow-dialog)]"
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <h3 className="text-base font-semibold text-[var(--pq-text)]">
+                {l('删除附件', 'Delete Attachment')}
+              </h3>
+              <p className="mt-2 text-sm leading-6 text-[var(--pq-text-muted)]">
+                {l('确定要删除此附件吗？此操作不可撤销。', 'Are you sure you want to delete this attachment? This action cannot be undone.')}
+              </p>
+              <div className="mt-5 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setAttachmentDeleteConfirm(null)}
+                  className="pq-button h-9 px-3 text-sm"
+                >
+                  {l('取消', 'Cancel')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const ctx = attachmentDeleteConfirm;
+                    setAttachmentDeleteConfirm(null);
+                    onDeleteAttachment?.(ctx.paperId, ctx.attachmentId);
+                  }}
+                  className="pq-button-primary h-9 bg-rose-600 px-3 text-sm hover:bg-rose-700 dark:bg-rose-700 dark:hover:bg-rose-800"
+                >
+                  <Trash2 className="mr-1.5 inline h-3.5 w-3.5" strokeWidth={1.9} />
+                  {l('删除', 'Delete')}
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        ) : null}
       </div>
     </aside>
   );
