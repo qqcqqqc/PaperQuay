@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReaderWorkspace from './ReaderWorkspace';
 import {
   captureSystemScreenshot,
+  deleteLocalFile,
   downloadRemoteFileToPath,
   loadPdfBinary,
   listLocalDirectoryFiles,
@@ -930,6 +931,46 @@ function DocumentReaderTab({
     [settings.mineruCacheDir],
   );
 
+  // 监听文献详情页 MinerU 解析完成事件，自动加载解析结果
+  useEffect(() => {
+    const handleMineruComplete = (event: CustomEvent) => {
+      const { paperId, mineruParsed } = event.detail;
+      if (!mineruParsed || !currentDocument || paperId !== currentDocument.itemKey) return;
+      if (flatBlocks.length > 0) return;
+      void (async () => {
+        const cachedMineru = await tryLoadSavedMineruPages(currentDocument);
+        if (cachedMineru) {
+          applyMineruPages(cachedMineru.pages, cachedMineru.path, {
+            item: currentDocument,
+          });
+          setStatusMessage(cachedMineru.message);
+        }
+      })();
+    };
+    window.addEventListener('paperquay:native-mineru-status-updated', handleMineruComplete as EventListener);
+    return () => {
+      window.removeEventListener('paperquay:native-mineru-status-updated', handleMineruComplete as EventListener);
+    };
+  }, [applyMineruPages, currentDocument, flatBlocks.length, tryLoadSavedMineruPages]);
+
+  // 当 tab 重新激活时检查是否有新解析结果
+  useEffect(() => {
+    if (!isActive || !currentDocument || flatBlocks.length > 0) return;
+    let cancelled = false;
+    void (async () => {
+      // 稍等一下让缓存完全写入
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      if (cancelled) return;
+      const cachedMineru = await tryLoadSavedMineruPages(currentDocument);
+      if (cancelled || !cachedMineru) return;
+      applyMineruPages(cachedMineru.pages, cachedMineru.path, {
+        item: currentDocument,
+      });
+      setStatusMessage(cachedMineru.message);
+    })();
+    return () => { cancelled = true; };
+  }, [isActive, currentDocument, flatBlocks.length, tryLoadSavedMineruPages, applyMineruPages]);
+
   const tryResolveSavedPdfPath = useCallback(
     async (item: WorkspaceItem) => {
       return resolveSavedPdfPath({
@@ -1446,6 +1487,14 @@ function DocumentReaderTab({
       return;
     }
 
+    // 检查是否已有 MinerU 解析结果，避免重复解析
+    if (currentDocument && flatBlocks.length > 0) {
+      const message = lRef.current('已有 MinerU 解析结果，无需重新解析', 'MinerU parse result already exists');
+      setStatusMessage(message);
+      updateLibraryOperation('mineru', 'success', message, flatBlocks.length, flatBlocks.length || null);
+      return;
+    }
+
     setLoading(true);
     setError('');
     const runningMessage = lRef.current('正在将 PDF 发送到 MinerU 云端解析…', 'Sending the PDF to MinerU cloud parsing...');
@@ -1523,6 +1572,40 @@ function DocumentReaderTab({
       setStatusMessage(nextStatusMessage);
       const blockCount = flattenMineruPages(pages).length;
       updateLibraryOperation('mineru', 'success', nextStatusMessage, blockCount, blockCount || null);
+
+      // 清理缓存目录中的 PDF 副本以节省空间
+      if (settings.mineruCacheDir.trim()) {
+        const cachePaths = buildMineruCachePaths(settings.mineruCacheDir.trim(), currentDocument);
+        const cacheDir = cachePaths.directory;
+        // 扫描缓存目录所有 PDF 文件（包括子目录），然后递归删除
+        void (async () => {
+          try {
+            const topFiles = await listLocalDirectoryFiles(cacheDir);
+            for (const file of topFiles) {
+              const lower = file.name.toLowerCase();
+              if (lower.endsWith('.pdf')) {
+                await deleteLocalFile(file.path).catch(() => {});
+              }
+            }
+            // 也尝试列出 images 等子目录下的 pdf
+            const subDirs = topFiles.filter((f) => !f.name.includes('.'));
+            for (const sub of subDirs) {
+              try {
+                const subFiles = await listLocalDirectoryFiles(sub.path);
+                for (const file of subFiles) {
+                  if (file.name.toLowerCase().endsWith('.pdf')) {
+                    await deleteLocalFile(file.path).catch(() => {});
+                  }
+                }
+              } catch {
+                // skip
+              }
+            }
+          } catch {
+            // noop
+          }
+        })();
+      }
     } catch (nextError) {
       const message =
         nextError instanceof Error ? nextError.message : lRef.current('云端解析失败', 'Cloud parsing failed');
@@ -3302,7 +3385,7 @@ function DocumentReaderTab({
 
 
   useEffect(() => {
-    const signature = `${document.workspaceId}::${document.attachmentKey ?? ''}`;
+    const signature = `${document.workspaceId}::${document.attachmentKey ?? ''}::${(document as any)._openedAt ?? ''}`;
 
     if (lastDocumentSignatureRef.current === signature) {
       return;
@@ -3313,7 +3396,7 @@ function DocumentReaderTab({
     pdfTextPendingRef.current = null;
     setQaRagEnabled(true);
     void openDocumentItem();
-  }, [document.attachmentKey, document.workspaceId, openDocumentItem]);
+  }, [document, openDocumentItem]);
 
   useEffect(() => {
     if (!currentDocument || !paperSummaryNextSourceKey) {

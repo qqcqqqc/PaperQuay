@@ -16,6 +16,7 @@ import {
   extractTranslatableMarkdownFromMineruBlock,
 } from '../../services/mineru';
 import { resolveSummaryOutputLanguage } from '../../services/summarySource';
+import { deleteLocalFile, listLocalDirectoryFiles } from '../../services/desktop';
 import { translateBlocksOpenAICompatible } from '../../services/translation';
 import type {
   OpenAICompatibleModelListResult,
@@ -387,6 +388,31 @@ export function useReaderLibraryActions({
           }),
         );
         setStatusMessage(l('MinerU 解析已完成', 'MinerU parsing finished'));
+
+        // 清理缓存目录中的 PDF 副本
+        if (cachePaths) {
+          void (async () => {
+            try {
+              const files = await listLocalDirectoryFiles(cachePaths.directory);
+              for (const file of files) {
+                if (file.name.toLowerCase().endsWith('.pdf')) {
+                  await deleteLocalFile(file.path).catch(() => {});
+                }
+              }
+              const subDirs = files.filter((f) => !f.name.includes('.'));
+              for (const sub of subDirs) {
+                try {
+                  const subFiles = await listLocalDirectoryFiles(sub.path);
+                  for (const file of subFiles) {
+                    if (file.name.toLowerCase().endsWith('.pdf')) {
+                      await deleteLocalFile(file.path).catch(() => {});
+                    }
+                  }
+                } catch { /* skip */ }
+              }
+            } catch { /* noop */ }
+          })();
+        }
       } catch (nextError) {
         const message =
           nextError instanceof Error
@@ -773,6 +799,7 @@ export function useReaderLibraryActions({
 
       setNativeLibraryItems((current) => {
         const existingItems = current.filter((item) => item.workspaceId !== workspaceItem.workspaceId);
+        (workspaceItem as any)._openedAt = Date.now();
         return [workspaceItem, ...existingItems];
       });
 

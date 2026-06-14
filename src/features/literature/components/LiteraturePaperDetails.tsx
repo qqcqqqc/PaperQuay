@@ -720,8 +720,15 @@ export default function LiteraturePaperDetails({
                               type="button"
                               className="mt-0.5 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm transition hover:bg-slate-100 dark:hover:bg-white/[0.06]"
                               onClick={() => {
-                                const withTarget = { ...mineruPdfSelector.paper, attachments: [...mineruPdfSelector.paper.attachments] } as any;
-                                withTarget._targetAttachmentId = att.id;
+                                if (idx === 0) {
+                                  setMineruPdfSelector(null);
+                                  onRunMineruParse?.(mineruPdfSelector.paper);
+                                } else {
+                                  const withTarget = { ...mineruPdfSelector.paper, attachments: [...mineruPdfSelector.paper.attachments] } as any;
+                                  withTarget._targetAttachmentId = att.id;
+                                  setMineruPdfSelector(null);
+                                  onRunMineruParse?.(withTarget as LiteraturePaper);
+                                }
                                 setMineruPdfSelector(null);
                                 onRunMineruParse?.(withTarget as LiteraturePaper);
                               }}
@@ -772,10 +779,15 @@ export default function LiteraturePaperDetails({
                               type="button"
                               className="mt-0.5 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm transition hover:bg-slate-100 dark:hover:bg-white/[0.06]"
                               onClick={() => {
-                                const withTarget = { ...translatePdfSelector.paper, attachments: [...translatePdfSelector.paper.attachments] } as any;
-                                withTarget._targetAttachmentId = att.id;
-                                setTranslatePdfSelector(null);
-                                onTranslatePaper?.(withTarget as LiteraturePaper);
+                                if (idx === 0) {
+                                  setTranslatePdfSelector(null);
+                                  onTranslatePaper?.(translatePdfSelector.paper);
+                                } else {
+                                  const withTarget = { ...translatePdfSelector.paper, attachments: [...translatePdfSelector.paper.attachments] } as any;
+                                  withTarget._targetAttachmentId = att.id;
+                                  setTranslatePdfSelector(null);
+                                  onTranslatePaper?.(withTarget as LiteraturePaper);
+                                }
                               }}
                             >
                               <FileText className="h-4 w-4 shrink-0 text-slate-400" />

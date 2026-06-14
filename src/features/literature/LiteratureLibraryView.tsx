@@ -74,6 +74,8 @@ import {
   splitZoteroItemGroups,
   uniqueZoteroItems,
 } from './zoteroImport';
+import { buildMineruCachePaths, buildMineruCachePathCandidates } from '../../utils/mineruCache';
+import { deleteLocalFile, listLocalDirectoryFiles } from '../../services/desktop';
 import {
   emitLibrarySettingsUpdated,
   LIBRARY_METADATA_ENRICH_REQUEST_EVENT,
@@ -2064,6 +2066,42 @@ export default function LiteratureLibraryView({
           onDeleteAttachment={async (paperId, attachmentId) => {
             try {
               await deleteLibraryAttachment({ attachmentId, deleteFile: true });
+              // 清理该附件的整个 MinerU 缓存目录
+              if (mineruCacheDir.trim()) {
+                const paper = papers.find((p) => p.id === paperId);
+                const attWsId = 'native-library:' + paperId + ':' + attachmentId;
+                const partialItem = {
+                  workspaceId: attWsId,
+                  itemKey: paperId,
+                  title: paper?.title || '',
+                  localPdfPath: '',
+                };
+                // 尝试所有命名格式的缓存目录
+                const cacheDirs = buildMineruCachePathCandidates(mineruCacheDir.trim(), partialItem as any);
+                for (const cache of cacheDirs) {
+                  void (async () => {
+                    try {
+                      const files = await listLocalDirectoryFiles(cache.directory);
+                      for (const file of files) {
+                        await deleteLocalFile(file.path).catch(() => {});
+                      }
+                      // 扫描子目录
+                      const subDirs = files.filter((f) => !f.name.includes('.'));
+                      for (const sub of subDirs) {
+                        try {
+                          const subFiles = await listLocalDirectoryFiles(sub.path);
+                          for (const file of subFiles) {
+                            await deleteLocalFile(file.path).catch(() => {});
+                          }
+                        } catch { /* skip */ }
+                        await deleteLocalFile(sub.path).catch(() => {});
+                      }
+                      // 最后删除目录本身
+                      await deleteLocalFile(cache.directory).catch(() => {});
+                    } catch { /* noop */ }
+                  })();
+                }
+              }
               await refreshAll();
             } catch (err) {
               setError(l('删除附件失败', 'Failed to delete attachment'));

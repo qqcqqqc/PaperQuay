@@ -114,6 +114,22 @@ function createFileCommands(context) {
       await shell.showItemInFolder(filePathClean);
     },
 
+    async delete_file({ filePath }) {
+      const cleanPath = cleanString(filePath);
+      if (!cleanPath) {
+        throw new Error('File path is empty');
+      }
+      assertWriteAllowed(cleanPath);
+      const stat = await fsp.stat(cleanPath).catch(() => null);
+      if (!stat) return true;
+      if (stat.isDirectory()) {
+        await fsp.rm(cleanPath, { recursive: true, force: true });
+      } else {
+        await fsp.unlink(cleanPath);
+      }
+      return true;
+    },
+
     async select_directory({ title }, event) {
       const win = BrowserWindow.fromWebContents(event.sender);
       const result = await dialog.showOpenDialog(win, { title, properties: ['openDirectory'] });

@@ -118,6 +118,14 @@ export async function showItemInFolder(filePath: string): Promise<void> {
   }
 }
 
+export async function deleteLocalFile(filePath: string): Promise<boolean> {
+  try {
+    return await invoke<boolean>('delete_file', { filePath });
+  } catch (error) {
+    throw new Error(toErrorMessage(error, '删除文件失败'));
+  }
+}
+
 export async function captureSystemScreenshot(): Promise<CapturedScreenshot | null> {
   try {
     return await invoke<CapturedScreenshot | null>('capture_system_screenshot');

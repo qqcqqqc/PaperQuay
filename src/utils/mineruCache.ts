@@ -84,7 +84,10 @@ function stableDocumentKey(item: WorkspaceItem): string {
 }
 
 export function buildMineruCachePaths(rootDir: string, item: WorkspaceItem): MineruCachePaths {
-  const directoryName = `document-${hashString(stableDocumentKey(item))}`;
+  // 使用论文标题 + workspaceId 哈希，生成可读目录名
+  const titlePart = sanitizePathSegment(item.title);
+  const hashPart = hashString(item.workspaceId);
+  const directoryName = titlePart ? `${titlePart}-${hashPart}` : `document-${hashPart}`;
 
   return buildCachePaths(rootDir, directoryName);
 }
