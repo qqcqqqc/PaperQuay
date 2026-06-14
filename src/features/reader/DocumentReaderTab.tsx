@@ -410,6 +410,8 @@ function DocumentReaderTab({
   const [zoteroRelatedNotesLoading, setZoteroRelatedNotesLoading] = useState(false);
   const [zoteroRelatedNotesError, setZoteroRelatedNotesError] = useState('');
   const [projectPdfFiles, setProjectPdfFiles] = useState<LocalDirectoryFileEntry[]>([]);
+  const [quickHighlightKey, setQuickHighlightKey] = useState('');
+  const [quickHighlightColor, setQuickHighlightColor] = useState('');
   const readerLocaleText = useCallback(
     (zh: string, en: string) => pickLocaleText(settings.uiLanguage, zh, en),
     [settings.uiLanguage],
@@ -2101,6 +2103,12 @@ function DocumentReaderTab({
     setStatusMessage(lRef.current('已清除划词内容', 'Cleared the selected excerpt'));
   }, [resetSelectedExcerptTranslationState]);
 
+  const handleQuickHighlight = useCallback((colorHex: string) => {
+    setQuickHighlightColor(colorHex);
+    setQuickHighlightKey(`${Date.now()}-${Math.random().toString(16).slice(2, 6)}`);
+    setStatusMessage(lRef.current('正在创建高亮...', 'Creating highlight...'));
+  }, []);
+
   useEffect(() => {
     if (!selectedExcerpt) {
       return;
@@ -3686,6 +3694,9 @@ function DocumentReaderTab({
         onTranslateSelectedExcerpt={() => void handleTranslateSelectedExcerpt()}
         onClearSelectedExcerpt={handleClearSelectedExcerpt}
         onPdfAnnotationSaveSuccess={handlePdfAnnotationSaveSuccess}
+        quickHighlightKey={quickHighlightKey}
+        quickHighlightColor={quickHighlightColor}
+        onQuickHighlight={handleQuickHighlight}
         aiConfigured={aiConfigured}
         assistantDetached={assistantDetached}
         leftSidebarCollapsed={false}

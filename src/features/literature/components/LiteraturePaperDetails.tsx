@@ -729,8 +729,6 @@ export default function LiteraturePaperDetails({
                                   setMineruPdfSelector(null);
                                   onRunMineruParse?.(withTarget as LiteraturePaper);
                                 }
-                                setMineruPdfSelector(null);
-                                onRunMineruParse?.(withTarget as LiteraturePaper);
                               }}
                             >
                               <FileText className="h-4 w-4 shrink-0 text-slate-400" />

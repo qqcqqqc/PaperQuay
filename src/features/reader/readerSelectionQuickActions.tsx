@@ -1,6 +1,6 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X } from 'lucide-react';
+import { GripHorizontal, X } from 'lucide-react';
 import { useLocaleText } from '../../i18n/uiLanguage';
 import type { ClientAnchorRect, SelectedExcerpt } from '../../types/reader';
 import { MarkdownPreview } from './assistantSidebarPrimitives';
@@ -137,6 +137,7 @@ export interface SelectionQuickActionsProps {
   onAddSelectionToNote: () => void;
   onTranslateSelectedExcerpt: () => void;
   onClearSelectedExcerpt: () => void;
+  onQuickHighlight?: (colorHex: string) => void;
 }
 
 export function SelectionQuickActions({
@@ -150,13 +151,101 @@ export function SelectionQuickActions({
   onAddSelectionToNote,
   onTranslateSelectedExcerpt,
   onClearSelectedExcerpt,
+  onQuickHighlight,
 }: SelectionQuickActionsProps) {
   const l = useLocaleText();
   const popoverRef = useRef<HTMLDivElement | null>(null);
+  const dragStartRef = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
+  const resizeStartRef = useRef<{ x: number; y: number; width: number; height: number } | null>(null);
+  const isInteractingRef = useRef(false);
+
+  const [offsetPosition, setOffsetPosition] = useState<{ left: number; top: number } | null>(null);
   const [popoverSize, setPopoverSize] = useState({
     width: FALLBACK_POPOVER_WIDTH,
     height: FALLBACK_POPOVER_HEIGHT,
   });
+  const [dragSize, setDragSize] = useState<{ width: number; height: number } | null>(null);
+
+  const MIN_POPOVER_WIDTH = 280;
+  const MIN_POPOVER_HEIGHT = 200;
+
+  const handleDragStart = useCallback((event: React.MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    isInteractingRef.current = true;
+
+    // 直接从 DOM 读取当前实际位置，避免第一次拖动时 offsetPosition 为 null 导致瞬移
+    const domRect = popoverRef.current?.getBoundingClientRect();
+    const startLeft = domRect?.left ?? 0;
+    const startTop = domRect?.top ?? 0;
+    dragStartRef.current = {
+      x: event.clientX,
+      y: event.clientY,
+      left: startLeft,
+      top: startTop,
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!dragStartRef.current) return;
+      const dx = e.clientX - dragStartRef.current.x;
+      const dy = e.clientY - dragStartRef.current.y;
+      setOffsetPosition({
+        left: dragStartRef.current.left + dx,
+        top: dragStartRef.current.top + dy,
+      });
+    };
+
+    const handleMouseUp = (e: MouseEvent) => {
+      e.stopPropagation();
+      dragStartRef.current = null;
+      // Use a small timeout to clear interacting state to ensure it covers the subsequent click event
+      setTimeout(() => {
+        isInteractingRef.current = false;
+      }, 50);
+      document.removeEventListener('mousemove', handleMouseMove, true);
+      document.removeEventListener('mouseup', handleMouseUp, true);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove, true);
+    document.addEventListener('mouseup', handleMouseUp, true);
+  }, []);
+
+  const handleResizeStart = useCallback((event: React.MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    isInteractingRef.current = true;
+
+    const currentWidth = dragSize?.width ?? popoverSize.width;
+    const currentHeight = dragSize?.height ?? popoverSize.height;
+    resizeStartRef.current = {
+      x: event.clientX,
+      y: event.clientY,
+      width: currentWidth,
+      height: currentHeight,
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!resizeStartRef.current) return;
+      const dx = e.clientX - resizeStartRef.current.x;
+      const dy = e.clientY - resizeStartRef.current.y;
+      const newWidth = Math.max(MIN_POPOVER_WIDTH, resizeStartRef.current.width + dx);
+      const newHeight = Math.max(MIN_POPOVER_HEIGHT, resizeStartRef.current.height + dy);
+      setDragSize({ width: newWidth, height: newHeight });
+    };
+
+    const handleMouseUp = (e: MouseEvent) => {
+      e.stopPropagation();
+      resizeStartRef.current = null;
+      setTimeout(() => {
+        isInteractingRef.current = false;
+      }, 50);
+      document.removeEventListener('mousemove', handleMouseMove, true);
+      document.removeEventListener('mouseup', handleMouseUp, true);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove, true);
+    document.addEventListener('mouseup', handleMouseUp, true);
+  }, [popoverSize, dragSize]);
 
   useEffect(() => {
     if (!selectedExcerpt) {
@@ -164,6 +253,10 @@ export function SelectionQuickActions({
     }
 
     const handleDocumentClick = (event: MouseEvent) => {
+      if (isInteractingRef.current) {
+        return;
+      }
+
       if (Date.now() - selectedExcerpt.createdAt < 500) {
         return;
       }
@@ -305,8 +398,10 @@ export function SelectionQuickActions({
     POPOVER_VIEWPORT_MARGIN,
     viewportHeight - POPOVER_VIEWPORT_MARGIN - panelHeight,
   );
-  const left = anchorRectPosition?.left ?? fallbackLeft;
-  const top = anchorRectPosition?.top ?? fallbackTop;
+  const effectiveLeft = offsetPosition ? offsetPosition.left : (anchorRectPosition?.left ?? fallbackLeft);
+  const effectiveTop = offsetPosition ? offsetPosition.top : (anchorRectPosition?.top ?? fallbackTop);
+  const effectiveWidth = dragSize?.width ?? Math.min(popoverSize.width, viewportWidth - POPOVER_VIEWPORT_MARGIN * 2);
+  const effectiveHeight = dragSize?.height;
   const sourceLabel = isPdfBlockExcerpt
     ? l('PDF 段落', 'PDF Paragraph')
     : selectedExcerpt.source === 'pdf'
@@ -352,29 +447,30 @@ export function SelectionQuickActions({
     <div
       className="pointer-events-none fixed z-[10000]"
       style={{
-        left,
-        top,
+        left: effectiveLeft,
+        top: effectiveTop,
+        width: effectiveWidth,
       }}
     >
       <div
         ref={popoverRef}
-        className="pointer-events-auto w-[min(360px,calc(100vw-32px))] rounded-[20px] border border-slate-200/80 bg-white/96 p-3 shadow-[0_18px_48px_rgba(15,23,42,0.16)] backdrop-blur-xl"
+        className="pointer-events-auto flex flex-col rounded-[20px] border border-slate-200/80 bg-white/96 shadow-[0_18px_48px_rgba(15,23,42,0.16)] backdrop-blur-xl overflow-hidden"
         style={{
-          maxHeight: `calc(100vh - ${POPOVER_VIEWPORT_MARGIN * 2}px)`,
-          overflowY: 'auto',
+          maxHeight: effectiveHeight ?? `calc(100vh - ${POPOVER_VIEWPORT_MARGIN * 2}px)`,
+          minWidth: `${MIN_POPOVER_WIDTH}px`,
+          height: effectiveHeight ?? undefined,
         }}
       >
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-indigo-600">
+        {/* Drag handle */}
+        <div
+          onMouseDown={handleDragStart}
+          className="flex cursor-grab items-center justify-between gap-3 rounded-t-[20px] px-3 pb-0 pt-3 active:cursor-grabbing"
+        >
+          <div className="flex items-center gap-2 text-slate-400">
+            <GripHorizontal className="h-4 w-4" strokeWidth={1.9} />
+            <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
               {sourceLabel}
-            </div>
-            <div className="mt-2 max-h-20 overflow-hidden text-sm font-medium leading-6 text-slate-700">
-              <MarkdownPreview
-                content={selectedExcerpt.text}
-                className="text-sm font-medium leading-6 text-slate-700 [&_.katex-display]:my-1 [&_p]:my-0 [&_p]:leading-6"
-              />
-            </div>
+            </span>
           </div>
           <button
             type="button"
@@ -386,42 +482,83 @@ export function SelectionQuickActions({
           </button>
         </div>
 
-        <div className="mt-3 rounded-2xl border border-slate-200/80 bg-slate-50/90 px-3 py-2.5">
-          <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-            {translationTitle}
+        <div className="flex min-h-0 flex-1 flex-col px-3 pb-0">
+          <div className="mt-3 flex flex-1 flex-col rounded-2xl border border-slate-200/80 bg-slate-50/90 px-3 py-2.5">
+            <div className="mb-1 shrink-0 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+              {translationTitle}
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto text-sm leading-6 text-slate-700">
+              <MarkdownPreview
+                content={translationLabel}
+                className="text-sm leading-6 text-slate-700 [&_.katex-display]:my-1 [&_p]:my-0 [&_p]:leading-6"
+              />
+            </div>
           </div>
-          <div className="max-h-52 overflow-auto text-sm leading-6 text-slate-700">
-            <MarkdownPreview
-              content={translationLabel}
-              className="text-sm leading-6 text-slate-700 [&_.katex-display]:my-1 [&_p]:my-0 [&_p]:leading-6"
-            />
+
+          {onQuickHighlight && selectedExcerpt?.source === 'pdf' ? (
+            <div className="mt-3 shrink-0">
+              <div className="flex items-center gap-2">
+                {['#fef08a', '#86efac', '#99f6e4', '#f9a8d4', '#fca5a5'].map((hex) => (
+                  <button
+                    key={hex}
+                    type="button"
+                    onClick={() => onQuickHighlight(hex)}
+                    className="h-7 w-7 rounded-full border-2 border-white shadow-sm transition-transform duration-150 hover:scale-110 hover:shadow-md"
+                    style={{ backgroundColor: hex }}
+                    title={hex}
+                    aria-label={`${l('高亮颜色', 'Highlight color')}: ${hex}`}
+                  />
+                ))}
+                <div className="relative h-7 w-7 overflow-hidden rounded-full border-2 border-white shadow-sm transition-transform duration-150 hover:scale-110 hover:shadow-md">
+                  <input
+                    type="color"
+                    className="absolute -inset-1 h-[150%] w-[150%] cursor-pointer border-none bg-transparent p-0"
+                    onChange={(e) => onQuickHighlight(e.target.value)}
+                    title={l('自定义颜色', 'Custom color')}
+                  />
+                  <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-slate-50/50">
+                    <div className="h-3 w-3 rounded-full bg-gradient-to-tr from-indigo-400 via-pink-400 to-yellow-400" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          <div className="mt-3 flex shrink-0 flex-wrap items-center gap-2 pb-3">
+            <button
+              type="button"
+              onClick={onAppendSelectedExcerptToQa}
+              className="inline-flex items-center rounded-xl bg-slate-900 px-3 py-2 text-sm font-medium text-white transition-all duration-200 hover:bg-slate-800"
+            >
+              {l('加入问答', 'Add to QA')}
+            </button>
+            <button
+              type="button"
+              onClick={onAddSelectionToNote}
+              className="inline-flex items-center rounded-xl border border-[var(--pq-accent-border)] bg-[var(--pq-accent-bg)] px-3 py-2 text-sm font-medium text-[var(--pq-accent)] transition-all duration-200 hover:bg-[var(--pq-accent-bg-hover)]"
+            >
+              {l('加入笔记', 'Add to Note')}
+            </button>
+            <button
+              type="button"
+              onClick={onTranslateSelectedExcerpt}
+              className="inline-flex items-center rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-all duration-200 hover:border-slate-300 hover:bg-slate-50"
+            >
+              {selectedExcerptTranslation.trim()
+                ? l('重新翻译', 'Translate Again')
+                : l('立即翻译', 'Translate Now')}
+            </button>
           </div>
         </div>
 
-        <div className="mt-3 flex items-center gap-2">
-          <button
-            type="button"
-            onClick={onAppendSelectedExcerptToQa}
-            className="inline-flex items-center rounded-xl bg-slate-900 px-3 py-2 text-sm font-medium text-white transition-all duration-200 hover:bg-slate-800"
-          >
-            {l('加入问答', 'Add to QA')}
-          </button>
-          <button
-            type="button"
-            onClick={onAddSelectionToNote}
-            className="inline-flex items-center rounded-xl border border-[var(--pq-accent-border)] bg-[var(--pq-accent-bg)] px-3 py-2 text-sm font-medium text-[var(--pq-accent)] transition-all duration-200 hover:bg-[var(--pq-accent-bg-hover)]"
-          >
-            {l('加入笔记', 'Add to Note')}
-          </button>
-          <button
-            type="button"
-            onClick={onTranslateSelectedExcerpt}
-            className="inline-flex items-center rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-all duration-200 hover:border-slate-300 hover:bg-slate-50"
-          >
-            {selectedExcerptTranslation.trim()
-              ? l('重新翻译', 'Translate Again')
-              : l('立即翻译', 'Translate Now')}
-          </button>
+        {/* Resize handle */}
+        <div
+          onMouseDown={handleResizeStart}
+          className="flex cursor-nwse-resize items-center justify-end rounded-b-[20px] px-3 pb-1 text-slate-300 hover:text-slate-500"
+        >
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <path d="M2 12L12 2M2 8L8 2M6 12L12 6" strokeLinecap="round" />
+          </svg>
         </div>
       </div>
     </div>

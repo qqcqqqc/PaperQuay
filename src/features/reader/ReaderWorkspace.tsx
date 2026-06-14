@@ -151,6 +151,9 @@ interface ReaderWorkspaceProps {
   onTranslateSelectedExcerpt: () => void;
   onClearSelectedExcerpt: () => void;
   onPdfAnnotationSaveSuccess: (path: string) => void;
+  quickHighlightKey?: string;
+  quickHighlightColor?: string;
+  onQuickHighlight?: (colorHex: string) => void;
   aiConfigured: boolean;
   assistantDetached: boolean;
   leftSidebarCollapsed: boolean;
@@ -247,6 +250,9 @@ function ReadingStage(props: ReaderWorkspaceProps & { immersiveReading: boolean 
     onTranslateSelectedExcerpt,
     onClearSelectedExcerpt,
     onPdfAnnotationSaveSuccess,
+    quickHighlightKey,
+    quickHighlightColor,
+    onQuickHighlight,
     onSelectAnnotation,
     aiConfigured,
     onReadingViewModeChange,
@@ -354,6 +360,8 @@ function ReadingStage(props: ReaderWorkspaceProps & { immersiveReading: boolean 
               onScrollPositionChange={onPdfScrollPositionChange}
               onReadingHeatmapChange={onPdfReadingHeatmapChange}
               onSaveSuccess={onPdfAnnotationSaveSuccess}
+              quickHighlightKey={quickHighlightKey}
+              quickHighlightColor={quickHighlightColor}
             />
           </section>
 
@@ -414,6 +422,7 @@ function ReadingStage(props: ReaderWorkspaceProps & { immersiveReading: boolean 
         onAddSelectionToNote={onAddSelectionToNote}
         onTranslateSelectedExcerpt={onTranslateSelectedExcerpt}
         onClearSelectedExcerpt={onClearSelectedExcerpt}
+        onQuickHighlight={onQuickHighlight}
       />
     </div>
   );

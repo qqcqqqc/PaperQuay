@@ -176,3 +176,6 @@ $RECYCLE.BIN/
 
 # Local AI assistant instructions
 AGENTS.md
+
+# Local AI assistant workspace metadata
+.workbuddy/

@@ -8,6 +8,7 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import {
+  AnnotationEditorParamsType,
   AnnotationEditorType,
   AnnotationMode,
   GlobalWorkerOptions,
@@ -143,6 +144,9 @@ interface PdfViewerProps {
   onScrollPositionChange?: (position: PdfScrollPosition) => void;
   onReadingHeatmapChange?: (heatmap: PdfReadingHeatmap) => void;
   onSaveSuccess?: (path: string) => void;
+  /** When this key changes, PdfViewer creates a highlight on the current selection using the specified color */
+  quickHighlightKey?: string;
+  quickHighlightColor?: string;
 }
 
 function resolveToolMode(mode: AnnotationEditorTool) {
@@ -229,6 +233,8 @@ function PdfViewer({
   onScrollPositionChange,
   onReadingHeatmapChange,
   onSaveSuccess,
+  quickHighlightKey,
+  quickHighlightColor,
 }: PdfViewerProps) {
   const l = useLocaleText();
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -248,6 +254,8 @@ function PdfViewer({
   const lastSelectionRef = useRef<{ text: string; emittedAt: number } | null>(null);
   const lRef = useRef(l);
   const activeRef = useRef(active);
+  const autoSaveRef = useRef<(() => void) | null>(null);
+  const previousEditorStateRef = useRef(false);
   const pageSizesRef = useRef<Record<number, PageSize>>({});
   const pageThumbnailsRef = useRef<Record<number, string>>({});
   const pageHostsRef = useRef<Record<number, PageHostState>>({});
@@ -255,6 +263,7 @@ function PdfViewer({
   const selectionStartedInsideRef = useRef(false);
   const selectionCommitTimerRef = useRef<number | null>(null);
   const selectionCommitAttemptRef = useRef(0);
+  const mouseIsDownRef = useRef(false);
   const pendingBlockSelectTimerRef = useRef<number | null>(null);
   const lastHandledHighlightSignalRef = useRef(highlightScrollSignal);
   const hoveredBlockIdRef = useRef<string | null>(hoveredBlockId);
@@ -281,6 +290,7 @@ function PdfViewer({
   const [hasSelectedEditor, setHasSelectedEditor] = useState(false);
   const [hasLiveTextSelection, setHasLiveTextSelection] = useState(false);
   const [annotationColors, setAnnotationColors] = useState(() => loadPdfAnnotationToolColors());
+  const [annotationFontSize, setAnnotationFontSize] = useState(14);
   const [activeColorTool, setActiveColorTool] = useState<PdfAnnotationColorTool>('highlight');
   const [thumbnailsCollapsed, setThumbnailsCollapsed] = useState(() =>
     loadStoredBoolean(PDF_THUMBNAILS_COLLAPSED_STORAGE_KEY, true),
@@ -535,6 +545,21 @@ function PdfViewer({
     },
     [],
   );
+
+  const updateAnnotationFontSize = useCallback((size: number) => {
+    setAnnotationFontSize(size);
+  }, []);
+
+  useEffect(() => {
+    if (!annotationEditorReadyRef.current || !annotationEditorUiManagerRef.current?.updateParams) {
+      return;
+    }
+
+    annotationEditorUiManagerRef.current.updateParams(
+      AnnotationEditorParamsType.FREETEXT_SIZE,
+      annotationFontSize,
+    );
+  }, [annotationFontSize]);
 
   const syncPageHosts = useCallback(() => {
     const viewer = viewerRef.current;
@@ -1276,6 +1301,9 @@ function PdfViewer({
       };
       await waitForAnnotationEditorMode(AnnotationEditorType.NONE);
       setBooleanStateIfChanged(setHasLiveTextSelection, false);
+
+      // Auto-save annotation to the original PDF
+      void autoSaveAnnotatedPdf();
     } catch (highlightError) {
       setDocumentError(
         highlightError instanceof Error
@@ -1288,6 +1316,24 @@ function PdfViewer({
     clearSelectionCommitTimer,
     waitForAnnotationEditorMode,
   ]);
+
+  // React to quick highlight requests from the popup (via quickHighlightKey prop change)
+  useEffect(() => {
+    if (!quickHighlightKey || !active) {
+      return;
+    }
+
+    const uiManager = annotationEditorUiManagerRef.current;
+
+    if (uiManager?.updateParams && quickHighlightColor) {
+      uiManager.updateParams(
+        AnnotationEditorParamsType.HIGHLIGHT_DEFAULT_COLOR,
+        quickHighlightColor,
+      );
+    }
+
+    void handleCreatePdfHighlight();
+  }, [active, handleCreatePdfHighlight, quickHighlightColor, quickHighlightKey]);
 
   useEffect(() => {
     persistPdfAnnotationToolColors(annotationColors);
@@ -1330,6 +1376,31 @@ function PdfViewer({
     applyPdfAnnotationToolColors(annotationEditorUiManagerRef.current, annotationColors);
   }, [annotationColors]);
 
+  const autoSaveAnnotatedPdf = useCallback(async () => {
+    const pdfDocument = pdfDocumentRef.current;
+
+    if (!pdfDocument || source?.kind !== 'local-path') {
+      return;
+    }
+
+    try {
+      const nextBytes = await pdfDocument.saveDocument();
+      const targetPath = source.path;
+
+      if (pdfDocumentRef.current !== pdfDocument) {
+        return;
+      }
+
+      await approveWritePath(targetPath);
+      await writeLocalBinaryFile(targetPath, new Uint8Array(nextBytes));
+    } catch {
+      // Silently fail for auto-save — annotations are still in memory
+    }
+  }, [source]);
+
+  // Keep ref in sync so the editor states callback can access it
+  autoSaveRef.current = autoSaveAnnotatedPdf;
+
   const handleSave = useCallback(async () => {
     const pdfDocument = pdfDocumentRef.current;
 
@@ -1342,32 +1413,31 @@ function PdfViewer({
       setDocumentError('');
       setSaveMessage('');
 
-      const sourcePath = source?.kind === 'local-path' ? source.path : '';
-      const exportDirectory = defaultSaveDirectory.trim();
-      const protectedSourcePath = originalPdfPath.trim();
-      const suggestedFileName = buildAnnotatedFileName(
-        currentPdfName || (sourcePath ? getFileNameFromPath(sourcePath) : 'document.pdf'),
-      );
-      const targetPath = sourcePath
-        ? exportDirectory
-          ? buildPathInDirectory(exportDirectory, suggestedFileName)
-          : buildAnnotatedSiblingPath(sourcePath)
-        : await selectSavePdfPath({
-            suggestedFileName,
-            initialDirectory:
-              exportDirectory || (sourcePath ? getParentDirectory(sourcePath) : undefined),
-          });
+      // For local-path sources, overwrite the source file directly
+      if (source?.kind === 'local-path') {
+        const nextBytes = await pdfDocument.saveDocument();
+
+        if (pdfDocumentRef.current !== pdfDocument) {
+          return;
+        }
+
+        await approveWritePath(source.path);
+        await writeLocalBinaryFile(source.path, new Uint8Array(nextBytes));
+        setSaveMessage(lRef.current('已保存批注到原文件', 'Saved annotations to the original file'));
+        onSaveSuccess?.(source.path);
+        return;
+      }
+
+      // For remote sources, show save dialog
+      const suggestedFileName = buildAnnotatedFileName(currentPdfName || 'document.pdf');
+      const targetPath = await selectSavePdfPath({
+        suggestedFileName,
+        initialDirectory: defaultSaveDirectory.trim() || undefined,
+      });
 
       if (!targetPath) {
         setSaveMessage(lRef.current('已取消导出批注版 PDF', 'Annotated PDF export canceled'));
         return;
-      }
-
-      if (
-        protectedSourcePath &&
-        normalizePathForCompare(targetPath) === normalizePathForCompare(protectedSourcePath)
-      ) {
-        throw new Error('Cannot overwrite the original PDF. Save annotations to a separate file.');
       }
 
       const nextBytes = await pdfDocument.saveDocument();
@@ -1378,17 +1448,7 @@ function PdfViewer({
 
       await approveWritePath(targetPath);
       await writeLocalBinaryFile(targetPath, new Uint8Array(nextBytes));
-      const updatingCurrentAnnotatedFile =
-        sourcePath && normalizePathForCompare(targetPath) === normalizePathForCompare(sourcePath);
-      setSaveMessage(
-        updatingCurrentAnnotatedFile
-          ? `Updated annotated PDF: ${targetPath}`
-          : exportDirectory
-            ? `Saved annotated PDF to the paper project folder: ${targetPath}`
-            : sourcePath
-              ? `Saved annotated PDF next to the original file: ${targetPath}`
-              : `Exported annotated PDF: ${targetPath}`,
-      );
+      setSaveMessage(lRef.current('已导出批注版 PDF', 'Exported annotated PDF'));
       onSaveSuccess?.(targetPath);
     } catch (saveError) {
       setDocumentError(
@@ -1506,7 +1566,7 @@ function PdfViewer({
   );
 
   useEffect(() => {
-    if (!active || !hasSelectedEditor) {
+    if (!active) {
       return undefined;
     }
 
@@ -1515,12 +1575,29 @@ function PdfViewer({
         return;
       }
 
-      if (event.key !== 'Delete' && event.key !== 'Backspace') {
+      if (event.key === 'Escape') {
+        if (editorTool !== 'none') {
+          setEditorTool('none');
+          event.preventDefault();
+        }
         return;
       }
 
-      event.preventDefault();
-      handleDeleteSelected();
+      // 'H' key for highlight
+      if ((event.key === 'h' || event.key === 'H') && !event.ctrlKey && !event.metaKey && !event.altKey) {
+        if (hasLiveTextSelection) {
+          void handleCreatePdfHighlight();
+          event.preventDefault();
+        }
+        return;
+      }
+
+      if (event.key === 'Delete' || event.key === 'Backspace') {
+        if (hasSelectedEditor) {
+          event.preventDefault();
+          handleDeleteSelected();
+        }
+      }
     };
 
     document.addEventListener('keydown', handleKeyDown);
@@ -1528,7 +1605,7 @@ function PdfViewer({
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [active, handleDeleteSelected, hasSelectedEditor]);
+  }, [active, editorTool, handleCreatePdfHighlight, handleDeleteSelected, hasLiveTextSelection, hasSelectedEditor]);
 
   useEffect(() => {
     setPageCount(0);
@@ -1612,7 +1689,14 @@ function PdfViewer({
         handleAnnotationEditorUiManager = (event) => {
           annotationEditorReadyRef.current = true;
           annotationEditorUiManagerRef.current = event.uiManager ?? null;
-          applyPdfAnnotationToolColors(annotationEditorUiManagerRef.current, annotationColors);
+          
+          const uiManager = annotationEditorUiManagerRef.current;
+          if (uiManager) {
+            applyPdfAnnotationToolColors(uiManager, annotationColors);
+            if (uiManager.updateParams) {
+              uiManager.updateParams(AnnotationEditorParamsType.FREETEXT_SIZE, annotationFontSize);
+            }
+          }
 
           pdfViewer.annotationEditorMode = {
             mode: resolveToolMode(editorToolRef.current),
@@ -1621,10 +1705,18 @@ function PdfViewer({
         };
 
         handleEditorStatesChanged = (event) => {
+          const nextHasSelectedEditor = Boolean(event.details?.hasSelectedEditor);
+
           setBooleanStateIfChanged(
             setHasSelectedEditor,
-            Boolean(event.details?.hasSelectedEditor),
+            nextHasSelectedEditor,
           );
+
+          // Auto-save when user finishes editing an annotation (editor was active → now closed)
+          if (!nextHasSelectedEditor && previousEditorStateRef.current && autoSaveRef.current) {
+            autoSaveRef.current();
+          }
+          previousEditorStateRef.current = nextHasSelectedEditor;
         };
 
         handlePagesInit = () => {
@@ -1962,6 +2054,7 @@ function PdfViewer({
     };
 
     const handleSelectionStart = (event: MouseEvent | PointerEvent) => {
+      mouseIsDownRef.current = true;
       selectionStartedInsideRef.current = isEventInsideContainer(event);
 
       if (selectionStartedInsideRef.current) {
@@ -1970,6 +2063,8 @@ function PdfViewer({
     };
 
     const handleMouseSelectionCommit = (event: MouseEvent) => {
+      mouseIsDownRef.current = false;
+
       if (editorToolRef.current !== 'none') {
         return;
       }
@@ -2011,7 +2106,7 @@ function PdfViewer({
         return;
       }
 
-      if (activeSelectionInside) {
+      if (activeSelectionInside && !mouseIsDownRef.current) {
         clearPendingBlockSelect();
         scheduleSelectionCommit(180);
         return;
@@ -2355,11 +2450,19 @@ function PdfViewer({
       emitBlockHover(null);
     };
 
+    const handleContextMenu = (event: MouseEvent) => {
+      if (editorToolRef.current !== 'none') {
+        event.preventDefault();
+        setEditorTool('none');
+      }
+    };
+
     viewer.addEventListener('pointerdown', handlePointerDown);
     viewer.addEventListener('pointermove', handlePointerMove);
     viewer.addEventListener('pointerup', handlePointerUp);
     viewer.addEventListener('pointerleave', handlePointerLeave);
     viewer.addEventListener('click', handleClick, true);
+    viewer.addEventListener('contextmenu', handleContextMenu);
 
     return () => {
       if (hoverAnimationFrame !== null) {
@@ -2377,6 +2480,7 @@ function PdfViewer({
       viewer.removeEventListener('pointerup', handlePointerUp);
       viewer.removeEventListener('pointerleave', handlePointerLeave);
       viewer.removeEventListener('click', handleClick, true);
+      viewer.removeEventListener('contextmenu', handleContextMenu);
     };
   }, [
     active,
@@ -2454,30 +2558,27 @@ function PdfViewer({
       <PdfViewerToolbar
         activeColorTool={activeColorTool}
         annotationColors={annotationColors}
+        annotationFontSize={annotationFontSize}
         canShowReadingHeatmapBar={canShowReadingHeatmapBar}
         currentPage={currentPage}
         documentError={documentError}
         editorTool={editorTool}
         enableReadingHeatmap={enableReadingHeatmap}
         hasLiveTextSelection={hasLiveTextSelection}
-        hasSelectedEditor={hasSelectedEditor}
         hideToolbar={hideToolbar}
         l={l}
         loading={loading}
         onActiveColorToolChange={setActiveColorTool}
+        onAnnotationFontSizeChange={updateAnnotationFontSize}
         onAnnotationToolColorChange={updateAnnotationToolColor}
         onCreateHighlight={handleCreatePdfHighlight}
-        onDeleteSelected={handleDeleteSelected}
         onEditorToolChange={setEditorTool}
-        onSave={handleSave}
         onScrollToPage={scrollToPage}
         onToggleReadingHeatmapBar={() => setReadingHeatmapBarVisible((current) => !current)}
         onZoomIn={() => pdfViewerRef.current?.increaseScale?.()}
         onZoomOut={() => pdfViewerRef.current?.decreaseScale?.()}
         pageCount={pageCount}
         readingHeatmapToggleLabel={readingHeatmapToggleLabel}
-        saveMessage={saveMessage}
-        saving={saving}
         showReadingHeatmapBar={showReadingHeatmapBar}
         translating={translating}
         translationProgressCompleted={translationProgressCompleted}

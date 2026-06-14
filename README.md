@@ -60,6 +60,14 @@
 - **Per-Attachment MinerU & Translation:** MinerU parsing and full-text translation now support selecting which PDF attachment to process (via a dropdown), enabling structured extraction and translation of supplementary materials, not just the main paper.
 - **Auto-Cleanup on Refresh:** Refreshing the library now automatically detects and removes paper records whose PDF files are no longer present on disk, keeping the library clean.
 
+**Selection popover overhaul & Annotation eraser tool:**
+
+- **Selection popover drag & resize:** The popup now has a drag handle for repositioning and a resize handle for flexible sizing, with minimum width/height constraints.
+- **Quick highlight colors:** 6 preset highlight colors (yellow, green, cyan, pink, red, purple) available directly from the selection popup for faster PDF annotation.
+- **Annotation eraser tool:** Added an eraser tool to the annotation toolbar — click on any ink or text annotation in eraser mode to delete it. The "Delete Selected" button has been removed in favor of this more intuitive workflow.
+- **Popover layout fixes:** Content (translation box, buttons, color chips) no longer overflows outside the popover when resized very small.
+- **First-drag stability fix:** Fixed a bug where the first drag attempt after opening the popover would cause the popup to jump off-screen.
+
 The v0.1.23 release focuses on reader stability and daily workflow polish:
 
 - macOS now uses the native traffic-light window controls and hides duplicate custom window buttons.

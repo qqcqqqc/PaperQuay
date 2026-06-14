@@ -1,14 +1,12 @@
-import type { Dispatch, SetStateAction, ReactNode } from 'react';
+import { useRef, type Dispatch, type SetStateAction, type ReactNode } from 'react';
 import {
   Activity,
   ChevronLeft,
   ChevronRight,
-  Download,
+  Eraser,
   Highlighter,
-  Loader2,
   MousePointer2,
   PenTool,
-  Trash2,
   Type,
   ZoomIn,
   ZoomOut,
@@ -29,8 +27,8 @@ type Localize = (zh: string, en: string) => string;
 
 export type AnnotationEditorTool = 'none' | 'freetext' | 'ink';
 
-type ToolbarToolKey = 'select' | 'highlight' | 'freetext' | 'ink';
-type EditableToolbarToolKey = Extract<ToolbarToolKey, 'freetext' | 'ink'>;
+type ToolbarToolKey = 'select' | 'freetext' | 'ink';
+type EditableToolbarToolKey = Exclude<ToolbarToolKey, 'select'>;
 
 interface ToolbarTool {
   key: ToolbarToolKey;
@@ -41,30 +39,27 @@ interface ToolbarTool {
 interface PdfViewerToolbarProps {
   activeColorTool: PdfAnnotationColorTool;
   annotationColors: PdfAnnotationToolColors;
+  annotationFontSize: number;
   canShowReadingHeatmapBar: boolean;
   currentPage: number;
   documentError: string;
   editorTool: AnnotationEditorTool;
   enableReadingHeatmap: boolean;
   hasLiveTextSelection: boolean;
-  hasSelectedEditor: boolean;
   hideToolbar: boolean;
   l: Localize;
   loading: boolean;
   onActiveColorToolChange: Dispatch<SetStateAction<PdfAnnotationColorTool>>;
+  onAnnotationFontSizeChange: (size: number) => void;
   onAnnotationToolColorChange: (tool: PdfAnnotationColorTool, value: string) => void;
   onCreateHighlight: () => void | Promise<void>;
-  onDeleteSelected: () => void;
   onEditorToolChange: Dispatch<SetStateAction<AnnotationEditorTool>>;
-  onSave: () => void | Promise<void>;
   onScrollToPage: (pageIndex: number) => void;
   onToggleReadingHeatmapBar: () => void;
   onZoomIn: () => void;
   onZoomOut: () => void;
   pageCount: number;
   readingHeatmapToggleLabel: string;
-  saveMessage: string;
-  saving: boolean;
   showReadingHeatmapBar: boolean;
   translating: boolean;
   translationProgressCompleted: number;
@@ -75,30 +70,27 @@ interface PdfViewerToolbarProps {
 export function PdfViewerToolbar({
   activeColorTool,
   annotationColors,
+  annotationFontSize,
   canShowReadingHeatmapBar,
   currentPage,
   documentError,
   editorTool,
   enableReadingHeatmap,
   hasLiveTextSelection,
-  hasSelectedEditor,
   hideToolbar,
   l,
   loading,
   onActiveColorToolChange,
+  onAnnotationFontSizeChange,
   onAnnotationToolColorChange,
   onCreateHighlight,
-  onDeleteSelected,
   onEditorToolChange,
-  onSave,
   onScrollToPage,
   onToggleReadingHeatmapBar,
   onZoomIn,
   onZoomOut,
   pageCount,
   readingHeatmapToggleLabel,
-  saveMessage,
-  saving,
   showReadingHeatmapBar,
   translating,
   translationProgressCompleted,
@@ -106,6 +98,7 @@ export function PdfViewerToolbar({
   zoomLabel,
 }: PdfViewerToolbarProps) {
   const activeToolColor = annotationColors[activeColorTool];
+  const colorPickerRef = useRef<HTMLInputElement>(null);
   const translationProgressRatio = getPercentProgress(
     translationProgressCompleted,
     translationProgressTotal,
@@ -115,11 +108,6 @@ export function PdfViewerToolbar({
       key: 'select',
       label: l('选择联动', 'Select & Link'),
       icon: <MousePointer2 className="h-4 w-4" strokeWidth={1.8} />,
-    },
-    {
-      key: 'highlight',
-      label: l('高亮', 'Highlight'),
-      icon: <Highlighter className="h-4 w-4" strokeWidth={1.8} />,
     },
     {
       key: 'freetext',
@@ -135,7 +123,6 @@ export function PdfViewerToolbar({
 
   const getToolLabel = (key: ToolbarToolKey) => {
     if (key === 'select') return l('选择联动', 'Select & Link');
-    if (key === 'highlight') return l('高亮', 'Highlight');
     if (key === 'freetext') return l('文本批注', 'Text Annotation');
     return l('手写批注', 'Ink Annotation');
   };
@@ -152,84 +139,67 @@ export function PdfViewerToolbar({
               key={item.key}
               type="button"
               onClick={() => {
-                if (item.key === 'highlight') {
-                  onActiveColorToolChange('highlight');
-                  void onCreateHighlight();
-                  return;
-                }
-
                 if (item.key === 'select') {
                   onEditorToolChange('none');
                   return;
                 }
 
                 const editableTool = item.key as EditableToolbarToolKey;
-                onActiveColorToolChange(editableTool);
-                onEditorToolChange((current) => (current === editableTool ? 'none' : editableTool));
+                
+                // If clicking the same tool again, open color picker
+                if (editorTool === editableTool) {
+                  colorPickerRef.current?.click();
+                } else {
+                  onActiveColorToolChange(editableTool);
+                  onEditorToolChange(editableTool);
+                }
               }}
-              disabled={
-                item.key === 'highlight'
-                  ? !hasLiveTextSelection || editorTool !== 'none' || loading || saving
-                  : loading || saving
-              }
+              disabled={loading}
               title={getToolLabel(item.key)}
               aria-label={getToolLabel(item.key)}
               className={cn(
                 'inline-flex h-10 w-10 items-center justify-center rounded-xl border text-slate-500 transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-55',
-                ((item.key === 'select' && editorTool === 'none') ||
-                  (item.key !== 'select' &&
-                    item.key !== 'highlight' &&
-                    editorTool === item.key))
+                (item.key === 'select' && editorTool === 'none') ||
+                (item.key !== 'select' &&
+                  editorTool === item.key)
                   ? 'border-indigo-200 bg-white text-indigo-600 shadow-[0_8px_18px_rgba(79,70,229,0.12)] dark:border-indigo-400/30 dark:bg-[var(--pq-surface-2)] dark:text-indigo-400 dark:shadow-[0_8px_18px_rgba(79,70,229,0.18)]'
                   : 'border-transparent bg-transparent hover:border-slate-200 hover:bg-white hover:text-slate-800 dark:hover:border-white/15 dark:hover:bg-[var(--pq-surface-2)] dark:hover:text-[var(--pq-text)]',
               )}
             >
               {item.icon}
+              {item.key !== 'select' && editorTool === item.key && (
+                <div 
+                  className="absolute bottom-1 right-1 h-1.5 w-1.5 rounded-full border border-white shadow-sm"
+                  style={{ backgroundColor: activeToolColor }}
+                />
+              )}
             </button>
           ))}
-        </div>
+          
+          <input
+            ref={colorPickerRef}
+            type="color"
+            value={activeToolColor}
+            onChange={(e) => onAnnotationToolColorChange(activeColorTool, e.target.value)}
+            className="sr-only"
+          />
 
-        <div className="inline-flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-white/86 px-2.5 py-2 dark:border-white/10 dark:bg-[var(--pq-surface-1)]">
-          <div className="flex items-center gap-1.5">
-            {PDF_ANNOTATION_COLOR_PRESETS.map((preset) => {
-              const colorValue = getPdfAnnotationColorValue(preset, activeColorTool);
-              const active = colorValue.toLowerCase() === activeToolColor.toLowerCase();
-              const colorLabel = getPdfAnnotationColorLabel(preset.id, l);
-
-              return (
-                <button
-                  key={`${activeColorTool}-${preset.id}`}
-                  type="button"
-                  onClick={() => onAnnotationToolColorChange(activeColorTool, colorValue)}
-                  className={cn(
-                    'h-6 w-6 rounded-full border-2 transition-all duration-200',
-                    active
-                      ? 'scale-110 border-slate-900 shadow-[0_0_0_2px_rgba(255,255,255,0.9)] dark:border-[var(--pq-text)] dark:shadow-[0_0_0_2px_rgba(255,255,255,0.12)]'
-                      : 'border-white hover:scale-105 hover:border-slate-300 dark:border-[var(--pq-border)] dark:hover:border-[var(--pq-border-strong)]',
-                  )}
-                  style={{ backgroundColor: colorValue }}
-                  title={colorLabel}
-                  aria-label={colorLabel}
-                />
-              );
-            })}
-          </div>
-          <label
-            className="inline-flex cursor-pointer items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-600 transition hover:border-slate-300 hover:bg-white dark:border-white/10 dark:bg-[var(--pq-surface-1)] dark:text-[var(--pq-text-muted)] dark:hover:border-white/15 dark:hover:bg-[var(--pq-surface-2)]"
-            title={l('Custom color', 'Custom color')}
-          >
-            <input
-              type="color"
-              value={activeToolColor}
-              onChange={(event) => onAnnotationToolColorChange(activeColorTool, event.target.value)}
-              className="sr-only"
-            />
-            <span
-              className="h-4 w-4 rounded-full border border-white shadow-sm"
-              style={{ backgroundColor: activeToolColor }}
-            />
-            {l('Custom', 'Custom')}
-          </label>
+          {editorTool === 'freetext' && (
+            <div className="ml-1 flex items-center gap-1.5 px-2 text-slate-400">
+              <span className="text-[10px] font-bold">SIZE</span>
+              <select
+                value={annotationFontSize}
+                onChange={(e) => onAnnotationFontSizeChange(Number(e.target.value))}
+                className="h-7 rounded-lg border border-slate-200 bg-white px-1 text-xs font-medium text-slate-600 outline-none hover:border-slate-300 dark:border-white/10 dark:bg-[var(--pq-surface-2)] dark:text-[var(--pq-text-muted)]"
+              >
+                {[10, 12, 14, 16, 18, 20, 24, 28, 32, 48].map((size) => (
+                  <option key={size} value={size}>
+                    {size}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -288,38 +258,9 @@ export function PdfViewerToolbar({
               <Activity className="h-4 w-4" strokeWidth={1.8} />
             </button>
           ) : null}
-          <button
-            type="button"
-            onClick={onDeleteSelected}
-            disabled={!hasSelectedEditor || loading || saving}
-            className={cn(
-              'inline-flex items-center rounded-xl border px-3 py-2 text-sm font-medium transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-60',
-              hasSelectedEditor && !loading && !saving
-                ? 'border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100 dark:border-rose-400/30 dark:bg-rose-400/10 dark:text-rose-400 dark:hover:bg-rose-400/20'
-                : 'border-slate-200 bg-white text-slate-400 dark:border-white/10 dark:bg-[var(--pq-surface-1)] dark:text-[var(--pq-text-faint)]',
-            )}
-            title={l('删除当前选中的 PDF 批注', 'Delete the selected PDF annotation')}
-          >
-            <Trash2 className="mr-2 h-4 w-4" strokeWidth={1.8} />
-            {l('Delete Selected', 'Delete Selected')}
-          </button>
-          <button
-            type="button"
-            onClick={() => void onSave()}
-            disabled={saving || loading}
-            className="inline-flex items-center rounded-xl bg-slate-900 px-3 py-2 text-sm font-medium text-white transition-all duration-200 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-[var(--pq-accent)] dark:text-[var(--pq-text)] dark:hover:bg-[var(--pq-accent-hover)]"
-          >
-            {saving ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" strokeWidth={1.8} />
-            ) : (
-              <Download className="mr-2 h-4 w-4" strokeWidth={1.8} />
-            )}
-            {saving ? l('正在导出...', 'Exporting...') : l('导出批注 PDF', 'Export Annotated PDF')}
-          </button>
         </div>
       </div>
 
-      {saveMessage ? <div className="mt-2 text-xs text-emerald-600">{saveMessage}</div> : null}
       {documentError ? <div className="mt-2 text-xs text-rose-600">{documentError}</div> : null}
       {translating && translationProgressTotal > 0 ? (
         <div className="mt-3 rounded-2xl border border-indigo-100 bg-indigo-50/80 px-3 py-2.5 dark:border-indigo-400/20 dark:bg-indigo-400/10">
