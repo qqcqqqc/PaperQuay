@@ -12,6 +12,7 @@ import type {
   ReaderSecrets,
   ReaderSettings,
   SummarySourceMode,
+  TranslationEngine,
   TranslationMap,
   UiLanguage,
   WorkspaceItem,
@@ -127,6 +128,23 @@ export function buildQaSourceOptions(locale: UiLanguage): Array<{
   ];
 }
 
+export function buildTranslationEngineOptions(locale: UiLanguage) {
+  return [
+    {
+      value: 'openai-compatible',
+      label: pickLocaleText(locale, 'AI 翻译 (OpenAI 兼容)', 'AI Translation (OpenAI-compatible)'),
+    },
+    {
+      value: 'google',
+      label: pickLocaleText(locale, 'Google 翻译 (免费)', 'Google Translate (Free)'),
+    },
+    {
+      value: 'bing',
+      label: pickLocaleText(locale, '必应翻译 (免费)', 'Bing Translate (Free)'),
+    },
+  ];
+}
+
 export function buildRagSourceOptions(locale: UiLanguage): Array<{
   value: RagSourceMode;
   label: string;
@@ -217,6 +235,8 @@ export const DEFAULT_SETTINGS: ReaderSettings = {
   translationSourceLanguage: 'English',
   translationTargetLanguage: 'Chinese',
   translationDisplayMode: 'translated',
+  translationEngine: 'openai-compatible',
+  selectionTranslationEngine: 'openai-compatible',
   qaActivePresetId: 'default',
 };
 
@@ -329,6 +349,17 @@ export function normalizeModelReasoningEffort(value: unknown): ModelReasoningEff
 
 export function normalizeModelApiMode(value: unknown): OpenAICompatibleApiMode {
   return value === 'responses' ? 'responses' : 'chat_completions';
+}
+
+export function normalizeTranslationEngine(value: unknown): TranslationEngine {
+  const validEngines: TranslationEngine[] = [
+    'openai-compatible',
+    'google',
+    'bing',
+  ];
+  return validEngines.includes(value as TranslationEngine)
+    ? (value as TranslationEngine)
+    : 'openai-compatible';
 }
 
 export function normalizeModelRuntimeConfig(value: unknown): ModelRuntimeConfig {
@@ -763,6 +794,8 @@ export function normalizeReaderSettings(value?: Partial<ReaderSettings> | null):
     translationRequestsPerMinute: clampTranslationRequestsPerMinute(
       merged.translationRequestsPerMinute,
     ),
+    translationEngine: normalizeTranslationEngine(merged.translationEngine),
+    selectionTranslationEngine: normalizeTranslationEngine(merged.selectionTranslationEngine),
     embeddingBaseUrl: merged.embeddingBaseUrl?.trim() || DEFAULT_SETTINGS.embeddingBaseUrl,
     embeddingModel: merged.embeddingModel?.trim() || DEFAULT_SETTINGS.embeddingModel,
     embeddingDimensions: clampEmbeddingDimensions(merged.embeddingDimensions),

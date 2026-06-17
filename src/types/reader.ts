@@ -98,6 +98,11 @@ export interface RenderableMineruBlock {
 
 export type TranslationDisplayMode = "original" | "translated" | "bilingual";
 
+export type TranslationEngine =
+  | "openai-compatible"
+  | "google"
+  | "bing";
+
 export type UiLanguage = "zh-CN" | "en-US";
 
 export interface TranslationMap {
@@ -394,7 +399,6 @@ export interface DocumentChatSession {
 
 export type AssistantPanelKey =
   | "chat"
-  | "translate"
   | "info"
   | "notes"
   | null;
@@ -559,6 +563,8 @@ export interface ReaderSettings {
   translationSourceLanguage: string;
   translationTargetLanguage: string;
   translationDisplayMode: TranslationDisplayMode;
+  translationEngine: TranslationEngine;
+  selectionTranslationEngine: TranslationEngine;
   qaActivePresetId: string;
 }
 

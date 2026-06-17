@@ -2,7 +2,6 @@
   ExternalLink,
   FileText,
   Info,
-  Languages,
   MessageSquare,
   PanelRightOpen,
   Settings2,
@@ -30,7 +29,6 @@ import { NotesSidebar } from '../notes/NotesSidebar';
 import { ChatPanel, ChatWorkspacePanel } from './assistantSidebarChat';
 import {
   InfoDrawerContent,
-  TranslateDrawerContent,
 } from './assistantSidebarDrawers';
 import { SectionCard, SelectionPanel, SummaryPanel } from './assistantSidebarPrimitives';
 
@@ -197,12 +195,6 @@ function AssistantSidebar({
       onClick: () => togglePanel('chat'),
     },
     {
-      key: 'translate' as const,
-      label: l('翻译', 'Translate'),
-      icon: Languages,
-      onClick: () => togglePanel('translate'),
-    },
-    {
       key: 'info' as const,
       label: l('信息', 'Info'),
       icon: Info,
@@ -263,20 +255,6 @@ function AssistantSidebar({
                 onCitationClick={onCitationClick}
                 onSaveAssistantMessageAsNote={onSaveAssistantMessageAsNote}
                 onCollapseSidebar={() => onActivePanelChange(null)}
-              />
-            ) : null}
-
-            {activePanel === 'translate' ? (
-              <TranslateDrawerContent
-                selectedExcerpt={selectedExcerpt}
-                selectedExcerptTranslation={selectedExcerptTranslation}
-                selectedExcerptTranslating={selectedExcerptTranslating}
-                selectedExcerptError={selectedExcerptError}
-                aiConfigured={aiConfigured}
-                onAppendSelectedExcerptToQa={onAppendSelectedExcerptToQa}
-                onTranslateSelectedExcerpt={onTranslateSelectedExcerpt}
-                onClearSelectedExcerpt={onClearSelectedExcerpt}
-                onCollapse={() => onActivePanelChange(null)}
               />
             ) : null}
 

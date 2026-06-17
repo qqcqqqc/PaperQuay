@@ -9,8 +9,8 @@ import {
 
 import { extractTranslatableMarkdownFromMineruBlock } from "../../services/mineru";
 import {
-  translateBlocksOpenAICompatible,
-  translateTextOpenAICompatible,
+  translateBlocks,
+  translateText,
 } from "../../services/translation";
 import type {
   PositionedMineruBlock,
@@ -403,7 +403,8 @@ export function useDocumentTranslation({
         sourceLanguage: settings.translationSourceLanguage,
         targetLanguage: settings.translationTargetLanguage,
         temperature: getModelRuntimeConfig(settings, "translation").temperature,
-        translateBatch: translateBlocksOpenAICompatible,
+        engine: settings.translationEngine,
+        translateBatch: translateBlocks,
       });
 
       if (documentTranslationRequestIdRef.current !== requestId) {
@@ -505,6 +506,7 @@ export function useDocumentTranslation({
     settings.translationRequestsPerMinute,
     settings.translationSourceLanguage,
     settings.translationTargetLanguage,
+    settings.translationEngine,
     translating,
     translationModelPreset,
     translationSnapshot?.translations,
@@ -557,15 +559,17 @@ export function useDocumentTranslation({
         return;
       }
 
-      if (!translationModelPreset || !translationModelPreset.apiKey.trim()) {
-        onOpenPreferences();
-        const message = lRef.current(
-          "请先在设置中填写 AI 接口 API Key",
-          "Configure the AI API key in Settings first",
-        );
-        setError(message);
-        updateLibraryOperation("translation", "error", message, 100, 100);
-        return;
+      if (settings.translationEngine === 'openai-compatible') {
+        if (!translationModelPreset || !translationModelPreset.apiKey.trim()) {
+          onOpenPreferences();
+          const message = lRef.current(
+            "请先在设置中填写 AI 接口 API Key",
+            "Configure the AI API key in Settings first",
+          );
+          setError(message);
+          updateLibraryOperation("translation", "error", message, 100, 100);
+          return;
+        }
       }
 
       const requestId = documentTranslationRequestIdRef.current + 1;
@@ -589,14 +593,14 @@ export function useDocumentTranslation({
 
       try {
         const result = await translateBlocksBestEffort({
-          apiKey: translationModelPreset.apiKey.trim(),
-          apiMode: translationModelPreset.apiMode,
-          baseUrl: translationModelPreset.baseUrl,
+          apiKey: translationModelPreset?.apiKey.trim() ?? '',
+          apiMode: translationModelPreset?.apiMode ?? 'chat_completions',
+          baseUrl: translationModelPreset?.baseUrl ?? '',
           batchSize: 1,
           blocks: [blockToTranslate],
           concurrency: 1,
           existingTranslations: {},
-          model: translationModelPreset.model,
+          model: translationModelPreset?.model ?? '',
           onProgress: async (progress) => {
             if (
               documentTranslationRequestIdRef.current !== requestId ||
@@ -626,7 +630,8 @@ export function useDocumentTranslation({
           sourceLanguage: settings.translationSourceLanguage,
           targetLanguage: settings.translationTargetLanguage,
           temperature: getModelRuntimeConfig(settings, "translation").temperature,
-          translateBatch: translateBlocksOpenAICompatible,
+          engine: settings.translationEngine,
+          translateBatch: translateBlocks,
         });
 
         if (documentTranslationRequestIdRef.current !== requestId) {
@@ -713,6 +718,7 @@ export function useDocumentTranslation({
       settings.translationRequestsPerMinute,
       settings.translationSourceLanguage,
       settings.translationTargetLanguage,
+      settings.translationEngine,
       translating,
       translationModelPreset,
       updateLibraryOperation,
@@ -761,64 +767,66 @@ export function useDocumentTranslation({
         return;
       }
 
-      if (
-        !selectionTranslationModelPreset ||
-        !selectionTranslationModelPreset.baseUrl.trim()
-      ) {
-        setSelectedExcerptTranslation("");
-        setSelectedExcerptError(
-          lRef.current(
-            "请先在设置中填写 OpenAI 兼容 Base URL。",
-            "Configure the OpenAI-compatible Base URL in Settings first.",
-          ),
-        );
-        setStatusMessage(
-          lRef.current("缺少翻译接口 Base URL", "Missing translation Base URL"),
-        );
+      if (settings.selectionTranslationEngine === 'openai-compatible') {
+        if (
+          !selectionTranslationModelPreset ||
+          !selectionTranslationModelPreset.baseUrl.trim()
+        ) {
+          setSelectedExcerptTranslation("");
+          setSelectedExcerptError(
+            lRef.current(
+              "请先在设置中填写 OpenAI 兼容 Base URL。",
+              "Configure the OpenAI-compatible Base URL in Settings first.",
+            ),
+          );
+          setStatusMessage(
+            lRef.current("缺少翻译接口 Base URL", "Missing translation Base URL"),
+          );
 
-        if (openPreferencesOnMissingKey) {
-          onOpenPreferences();
+          if (openPreferencesOnMissingKey) {
+            onOpenPreferences();
+          }
+
+          return;
         }
 
-        return;
-      }
+        if (!selectionTranslationModelPreset.apiKey.trim()) {
+          setSelectedExcerptTranslation("");
+          setSelectedExcerptError(
+            lRef.current(
+              "请先在设置中填写 AI 接口 API Key。",
+              "Configure the AI API key in Settings first.",
+            ),
+          );
+          setStatusMessage(
+            lRef.current("缺少翻译接口 API Key", "Missing translation API key"),
+          );
 
-      if (!selectionTranslationModelPreset.apiKey.trim()) {
-        setSelectedExcerptTranslation("");
-        setSelectedExcerptError(
-          lRef.current(
-            "请先在设置中填写 AI 接口 API Key。",
-            "Configure the AI API key in Settings first.",
-          ),
-        );
-        setStatusMessage(
-          lRef.current("缺少翻译接口 API Key", "Missing translation API key"),
-        );
+          if (openPreferencesOnMissingKey) {
+            onOpenPreferences();
+          }
 
-        if (openPreferencesOnMissingKey) {
-          onOpenPreferences();
+          return;
         }
 
-        return;
-      }
+        if (!selectionTranslationModelPreset.model.trim()) {
+          setSelectedExcerptTranslation("");
+          setSelectedExcerptError(
+            lRef.current(
+              "请先在设置中填写模型名称。",
+              "Configure the model name in Settings first.",
+            ),
+          );
+          setStatusMessage(
+            lRef.current("缺少翻译模型名称", "Missing translation model name"),
+          );
 
-      if (!selectionTranslationModelPreset.model.trim()) {
-        setSelectedExcerptTranslation("");
-        setSelectedExcerptError(
-          lRef.current(
-            "请先在设置中填写模型名称。",
-            "Configure the model name in Settings first.",
-          ),
-        );
-        setStatusMessage(
-          lRef.current("缺少翻译模型名称", "Missing translation model name"),
-        );
+          if (openPreferencesOnMissingKey) {
+            onOpenPreferences();
+          }
 
-        if (openPreferencesOnMissingKey) {
-          onOpenPreferences();
+          return;
         }
-
-        return;
       }
 
       const requestId = selectedExcerptRequestIdRef.current + 1;
@@ -836,11 +844,11 @@ export function useDocumentTranslation({
 
       try {
         const translatedText = (
-          await translateTextOpenAICompatible({
-            baseUrl: selectionTranslationModelPreset.baseUrl,
-            apiKey: selectionTranslationModelPreset.apiKey.trim(),
-            model: selectionTranslationModelPreset.model,
-            apiMode: selectionTranslationModelPreset.apiMode,
+          await translateText(settings.selectionTranslationEngine, {
+            baseUrl: selectionTranslationModelPreset?.baseUrl ?? '',
+            apiKey: selectionTranslationModelPreset?.apiKey.trim() ?? '',
+            model: selectionTranslationModelPreset?.model ?? '',
+            apiMode: selectionTranslationModelPreset?.apiMode ?? 'chat_completions',
             temperature: getModelRuntimeConfig(settings, "selectionTranslation")
               .temperature,
             reasoningEffort: getModelRuntimeConfig(
@@ -911,6 +919,7 @@ export function useDocumentTranslation({
       settings.translationRequestsPerMinute,
       settings.translationSourceLanguage,
       settings.translationTargetLanguage,
+      settings.selectionTranslationEngine,
       lRef,
     ],
   );

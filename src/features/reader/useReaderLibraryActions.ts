@@ -17,7 +17,7 @@ import {
 } from '../../services/mineru';
 import { resolveSummaryOutputLanguage } from '../../services/summarySource';
 import { deleteLocalFile, listLocalDirectoryFiles } from '../../services/desktop';
-import { translateBlocksOpenAICompatible } from '../../services/translation';
+import { translateBlocks } from '../../services/translation';
 import type {
   OpenAICompatibleModelListResult,
   OpenAICompatibleTestResult,
@@ -616,7 +616,8 @@ export function useReaderLibraryActions({
           sourceLanguage: settings.translationSourceLanguage,
           targetLanguage: settings.translationTargetLanguage,
           temperature: getModelRuntimeConfig(settings, 'translation').temperature,
-          translateBatch: translateBlocksOpenAICompatible,
+          engine: settings.translationEngine,
+          translateBatch: translateBlocks,
         });
         const translations = result.translations;
 

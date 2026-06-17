@@ -272,6 +272,7 @@ function PdfViewer({
   const scrollPositionRef = useRef<PdfScrollPosition | null>(scrollPosition);
   const sourceSignatureRef = useRef('');
   const restoringScrollRef = useRef(false);
+  const needsInitialLayoutRef = useRef(true);
   const restoredScrollKeyRef = useRef('');
   const externalScrollRestoreKeyRef = useRef('');
   const pendingScrollRestoreKeyRef = useRef('');
@@ -887,9 +888,22 @@ function PdfViewer({
 
   const refreshPdfViewerLayout = useCallback(() => {
     const pdfViewer = pdfViewerRef.current;
+    const container = containerRef.current;
 
-    if (!activeRef.current || !pdfViewer) {
+    if (!activeRef.current || !pdfViewer || !container) {
       return;
+    }
+
+    if (needsInitialLayoutRef.current && container.clientWidth > 0) {
+      needsInitialLayoutRef.current = false;
+      try {
+        primeSavedScrollPage(pdfViewer, pdfViewer.pagesCount);
+        pdfViewer.currentScaleValue = 'page-width';
+        setStringStateIfChanged(setZoomLabel, lRef.current('Fit Width', 'Fit Width'));
+        restoreSavedScroll({ force: true });
+      } catch {
+        // PDF.js might still be initializing
+      }
     }
 
     try {
@@ -897,11 +911,7 @@ function PdfViewer({
     } catch {
       // PDF.js can throw while a document is still being attached.
     }
-
-    if (syncPageHosts()) {
-      retrySavedScrollRestore();
-    }
-  }, [retrySavedScrollRestore, syncPageHosts]);
+  }, [primeSavedScrollPage, restoreSavedScroll]);
 
   useEffect(() => {
     if (!scrollPosition || !sourceSignature || scrollPosition.sourceKey !== sourceSignature) {
@@ -1675,6 +1685,7 @@ function PdfViewer({
     setPageHosts({});
     const initialPage = getSavedScrollPage();
 
+    needsInitialLayoutRef.current = true;
     currentPageRef.current = initialPage;
     restoredScrollKeyRef.current = '';
     setNumberStateIfChanged(setCurrentPage, initialPage);
@@ -1801,12 +1812,15 @@ function PdfViewer({
         };
 
         handlePagesInit = () => {
-          primeSavedScrollPage(pdfViewer, pdfViewer.pagesCount);
-          pdfViewer.currentScaleValue = 'page-width';
-          pdfViewer.update?.();
-          setStringStateIfChanged(setZoomLabel, lRef.current('Fit Width', 'Fit Width'));
-          syncPageHosts();
-          restoreSavedScroll({ force: true });
+          if (container.clientWidth > 0) {
+            needsInitialLayoutRef.current = false;
+            primeSavedScrollPage(pdfViewer, pdfViewer.pagesCount);
+            pdfViewer.currentScaleValue = 'page-width';
+            pdfViewer.update?.();
+            setStringStateIfChanged(setZoomLabel, lRef.current('Fit Width', 'Fit Width'));
+            syncPageHosts();
+            restoreSavedScroll({ force: true });
+          }
           window.requestAnimationFrame(refreshPdfViewerLayout);
         };
 

@@ -2092,6 +2092,7 @@ function DocumentReaderTab({
     );
 
     setQaInput((current) => (current.trim() ? `${current}\n\n${excerptPrompt}` : excerptPrompt));
+    setAssistantActivePanel('chat');
     setStatusMessage(lRef.current('已将划词内容加入问答输入框', 'Added the selected excerpt to the QA input'));
   }, [selectedExcerpt]);
 
@@ -2543,27 +2544,41 @@ function DocumentReaderTab({
       return;
     }
 
-    const anchor = createNoteAnchorFromSelection(selectedExcerpt, currentDocument.workspaceId, currentDocument.title);
-    let targetNote = resolveReaderNoteAnchorTarget(notes, activeNoteId);
+    const trimmedExcerpt = selectedExcerpt.text.trim();
+    // Search for an existing anchor with the same text in all notes of this document
+    let targetNote = notes.find((n) =>
+      n.anchors.some((a) => a.excerpt?.trim() === trimmedExcerpt),
+    ) ?? null;
 
-    if (!targetNote) {
-      targetNote = await handleCreateNote(
-        buildSelectedExcerptNoteCreateRequest({
-          paperId: currentDocument.workspaceId,
-          selectedExcerpt,
-          title: titleFromText(selectedExcerpt.text, lRef.current('新的阅读笔记', 'New Reading Note')),
-        }),
-      );
+    let anchor: NoteAnchor;
+
+    if (targetNote) {
+      // Find the existing anchor to get its ID for jumping
+      const existingAnchor = targetNote.anchors.find((a) => a.excerpt?.trim() === trimmedExcerpt);
+      anchor = existingAnchor!;
+    } else {
+      anchor = createNoteAnchorFromSelection(selectedExcerpt, currentDocument.workspaceId, currentDocument.title);
+      targetNote = resolveReaderNoteAnchorTarget(notes, activeNoteId);
 
       if (!targetNote) {
-        return;
+        targetNote = await handleCreateNote(
+          buildSelectedExcerptNoteCreateRequest({
+            paperId: currentDocument.workspaceId,
+            selectedExcerpt,
+            title: titleFromText(selectedExcerpt.text, lRef.current('新的阅读笔记', 'New Reading Note')),
+          }),
+        );
+
+        if (!targetNote) {
+          return;
+        }
       }
     }
 
     setActiveNoteId(targetNote.id);
     setAssistantActivePanel('notes');
     setPendingNoteAnchorInsert(buildPendingNoteAnchorInsert(targetNote.id, anchor));
-    setStatusMessage(lRef.current('已插入当前笔记，保存后同步定位', 'Inserted into the current note. Save to sync the reference.'));
+    setStatusMessage(lRef.current('已加入或定位到现有笔记', 'Added to or jumped to existing note'));
   }, [
     activeNoteId,
     currentDocument.title,

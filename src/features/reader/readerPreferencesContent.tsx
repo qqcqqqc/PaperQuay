@@ -21,6 +21,7 @@ import {
   buildRagSourceOptions,
   buildSummaryLanguageOptions,
   buildSummarySourceOptions,
+  buildTranslationEngineOptions,
   clampBatchConcurrency,
   resolveModelPreset,
   type PreferencesSectionKey,
@@ -1035,7 +1036,44 @@ export function ReaderPreferencesContent({
               </div>
             </div>
 
-            <div className="rounded-2xl border border-slate-200 bg-slate-50/70 px-3 py-2 text-xs leading-5 text-slate-500">
+            <div className="grid gap-3 md:grid-cols-2 mt-3">
+              <div className="space-y-2">
+                <div className="text-xs font-medium text-slate-500">
+                  {l('全文翻译服务', 'Document Translation Service')}
+                </div>
+                <SettingsSelect
+                  value={settings.translationEngine}
+                  onChange={(event) =>
+                    onSettingChange('translationEngine', event.target.value as any)
+                  }
+                >
+                  {buildTranslationEngineOptions(settings.uiLanguage).map((engine) => (
+                    <option key={engine.value} value={engine.value}>
+                      {engine.label}
+                    </option>
+                  ))}
+                </SettingsSelect>
+              </div>
+              <div className="space-y-2">
+                <div className="text-xs font-medium text-slate-500">
+                  {l('划词翻译服务', 'Selection Translation Service')}
+                </div>
+                <SettingsSelect
+                  value={settings.selectionTranslationEngine}
+                  onChange={(event) =>
+                    onSettingChange('selectionTranslationEngine', event.target.value as any)
+                  }
+                >
+                  {buildTranslationEngineOptions(settings.uiLanguage).map((engine) => (
+                    <option key={engine.value} value={engine.value}>
+                      {engine.label}
+                    </option>
+                  ))}
+                </SettingsSelect>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-slate-50/70 px-3 py-2 text-xs leading-5 text-slate-500 mt-3">
               {l(
                 '整篇翻译会按结构块分批调用模型，并将结果缓存到当前文档会话中。',
                 'Full-document translation is executed in batches by structured blocks and cached in the current document session.',

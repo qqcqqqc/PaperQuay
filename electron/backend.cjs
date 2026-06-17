@@ -1,4 +1,5 @@
 const { createAiCommands } = require('./backend/aiCommands.cjs');
+const { createFreeTranslateCommands } = require('./backend/freeTranslateCommands.cjs');
 const { createAppPaths, createLibraryStore } = require('./backend/libraryStore.cjs');
 const { createFileCommands } = require('./backend/fileCommands.cjs');
 const { createIntegrationCommands } = require('./backend/integrationCommands.cjs');
@@ -84,6 +85,7 @@ function createBackend({ app }) {
     ...createLibraryCommands(context),
     ...createNoteCommands(context),
     ...createAiCommands(context),
+    ...createFreeTranslateCommands(),
     ...createIntegrationCommands(context),
     ...createUpdateCommands(context),
   };

@@ -1367,21 +1367,42 @@ export function NoteEditor({
     if (handledAnchorInsertRequestRef.current === pendingAnchorInsert.requestId) return;
 
     handledAnchorInsertRequestRef.current = pendingAnchorInsert.requestId;
-    pendingAnchorsRef.current.set(pendingAnchorInsert.anchor.id, pendingAnchorInsert.anchor);
 
-    const currentSelection = lastSelectionRef.current ?? {
-      from: editor.state.selection.from,
-      to: editor.state.selection.to,
-    };
-    const insertAt = clampDocPosition(editor, currentSelection.to);
+    let existingPos: number | null = null;
+    editor.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'noteAnchorBlock') {
+        if (node.attrs.excerpt && pendingAnchorInsert.anchor.excerpt && node.attrs.excerpt.trim() === pendingAnchorInsert.anchor.excerpt.trim()) {
+          existingPos = pos;
+          return false; // Stop descending
+        }
+      }
+      return true;
+    });
 
-    editor
-      .chain()
-      .focus(insertAt)
-      .insertContentAt(insertAt, [noteAnchorBlockFromAnchor(pendingAnchorInsert.anchor), paragraphNode()], {
-        updateSelection: true,
-      })
-      .run();
+    if (existingPos !== null) {
+      editor
+        .chain()
+        .focus(existingPos)
+        .setNodeSelection(existingPos)
+        .scrollIntoView()
+        .run();
+    } else {
+      pendingAnchorsRef.current.set(pendingAnchorInsert.anchor.id, pendingAnchorInsert.anchor);
+
+      const currentSelection = lastSelectionRef.current ?? {
+        from: editor.state.selection.from,
+        to: editor.state.selection.to,
+      };
+      const insertAt = clampDocPosition(editor, currentSelection.to);
+
+      editor
+        .chain()
+        .focus(insertAt)
+        .insertContentAt(insertAt, [noteAnchorBlockFromAnchor(pendingAnchorInsert.anchor), paragraphNode()], {
+          updateSelection: true,
+        })
+        .run();
+    }
 
     window.requestAnimationFrame(() => {
       if (editor.isDestroyed) return;

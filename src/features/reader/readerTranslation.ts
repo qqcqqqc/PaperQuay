@@ -2,6 +2,7 @@ import type {
   OpenAICompatibleTranslateOptions,
   TranslationBlockInput,
   TranslationBlockOutput,
+  TranslationEngine,
   TranslationMap,
 } from '../../types/reader';
 
@@ -40,7 +41,9 @@ export interface TranslateBlocksBestEffortOptions {
   sourceLanguage: string;
   targetLanguage: string;
   temperature?: number;
+  engine: TranslationEngine;
   translateBatch: (
+    engine: TranslationEngine,
     options: OpenAICompatibleTranslateOptions,
   ) => Promise<TranslationBlockOutput[]>;
 }
@@ -192,6 +195,7 @@ export async function translateBlocksBestEffort({
   sourceLanguage,
   targetLanguage,
   temperature,
+  engine,
   translateBatch,
 }: TranslateBlocksBestEffortOptions): Promise<IncrementalTranslationResult> {
   const requestedBlocks = blocks.filter((block) => block.text.trim().length > 0);
@@ -272,7 +276,7 @@ export async function translateBlocksBestEffort({
       const batch = batches[currentIndex];
 
       try {
-        const outputs = await translateBatch({
+        const outputs = await translateBatch(engine, {
           apiKey,
           apiMode,
           baseUrl,
