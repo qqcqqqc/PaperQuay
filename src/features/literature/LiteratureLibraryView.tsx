@@ -194,9 +194,51 @@ type CategoryNameDialogState =
   | { mode: 'rename'; category: LiteratureCategory };
 
 type LibraryConfirmDialogState =
-  | { kind: 'delete-category'; category: LiteratureCategory }
+  | { kind: 'delete-category'; category: LiteratureCategory; deleteFiles: boolean }
   | { kind: 'delete-paper'; paper: LiteraturePaper; deleteFiles: boolean }
   | { kind: 'regenerate-overview'; paper: LiteraturePaper };
+
+async function cleanupCachesByWorkspaceId(wsId: string, paper: LiteraturePaper | undefined, mineruCacheDir: string) {
+  if (!mineruCacheDir.trim()) return;
+  const partialItem = {
+    workspaceId: wsId,
+    itemKey: paper?.id || '',
+    title: paper?.title || '',
+    localPdfPath: '',
+  };
+  const cacheDirs = buildMineruCachePathCandidates(mineruCacheDir.trim(), partialItem as any);
+  for (const cache of cacheDirs) {
+    try {
+      const files = await listLocalDirectoryFiles(cache.directory);
+      for (const file of files) {
+        await deleteLocalFile(file.path).catch(() => {});
+      }
+      const subDirs = files.filter((f) => !f.name.includes('.'));
+      for (const sub of subDirs) {
+        try {
+          const subFiles = await listLocalDirectoryFiles(sub.path);
+          for (const file of subFiles) {
+            await deleteLocalFile(file.path).catch(() => {});
+          }
+        } catch { /* skip */ }
+        await deleteLocalFile(sub.path).catch(() => {});
+      }
+      await deleteLocalFile(cache.directory).catch(() => {});
+    } catch { /* noop */ }
+  }
+}
+
+async function cleanupPaperCaches(paper: LiteraturePaper, mineruCacheDir: string) {
+  if (!mineruCacheDir.trim()) return;
+
+  // 1. Clean up base ID (usually the main paper)
+  await cleanupCachesByWorkspaceId(`native-library:${paper.id}`, paper, mineruCacheDir);
+
+  // 2. Clean up all attachment IDs
+  for (const attachment of paper.attachments) {
+    await cleanupCachesByWorkspaceId(`native-library:${paper.id}:${attachment.id}`, paper, mineruCacheDir);
+  }
+}
 
 export default function LiteratureLibraryView({
   onOpenPaper,
@@ -1487,14 +1529,26 @@ export default function LiteratureLibraryView({
     setConfirmDialog({
       kind: 'delete-category',
       category,
+      deleteFiles: true, // Default to true as per user request "一并删除"
     });
   };
 
-  const deleteCategoryAfterConfirm = async (category: LiteratureCategory) => {
+  const deleteCategoryAfterConfirm = async (category: LiteratureCategory, deleteFiles: boolean) => {
     setDialogBusy(true);
     setError('');
     try {
-      await deleteLibraryCategory(category.id);
+      const result = await deleteLibraryCategory({ categoryId: category.id, deleteFiles });
+      
+      // If files were deleted, also clean up MinerU/Translation caches
+      if (deleteFiles && result.deletedPaperIds.length > 0) {
+        for (const paperId of result.deletedPaperIds) {
+          const paper = papers.find((p) => p.id === paperId);
+          if (paper) {
+            await cleanupPaperCaches(paper, mineruCacheDir);
+          }
+        }
+      }
+
       const nextCategories = await listLibraryCategories();
       const allCategory = nextCategories.find((item) => item.systemKey === 'all');
       const nextSelectedCategoryId = allCategory?.id ?? nextCategories[0]?.id ?? null;
@@ -1502,7 +1556,7 @@ export default function LiteratureLibraryView({
       setCategories(nextCategories);
       setSelectedCategoryId(nextSelectedCategoryId);
       await refreshPapers(nextSelectedCategoryId);
-      setStatusMessage(l('分类已删除', 'Category deleted'));
+      setStatusMessage(l('分类及相关文献已删除', 'Category and related papers deleted'));
       setConfirmDialog(null);
     } catch (nextError) {
       const message =
@@ -1608,7 +1662,7 @@ export default function LiteratureLibraryView({
     setConfirmDialog({
       kind: 'delete-paper',
       paper,
-      deleteFiles: selectedCategory?.systemKey === 'all',
+      deleteFiles: true, // User requested "一并删除"
     });
   };
 
@@ -1619,10 +1673,15 @@ export default function LiteratureLibraryView({
 
     try {
       await deleteLibraryPaper({ paperId: paper.id, deleteFiles });
+      
+      if (deleteFiles) {
+        await cleanupPaperCaches(paper, mineruCacheDir);
+      }
+
       await refreshAll();
       setStatusMessage(
         deleteFiles
-          ? l('文献记录和 PDF 文件已删除。', 'Paper record and PDF files deleted.')
+          ? l('文献记录、PDF 文件及缓存已删除。', 'Paper record, PDF files, and caches deleted.')
           : l('文献记录已删除，PDF 文件未删除。', 'Paper record deleted. PDF files were not deleted.'),
       );
       setConfirmDialog(null);
@@ -2066,42 +2125,8 @@ export default function LiteratureLibraryView({
           onDeleteAttachment={async (paperId, attachmentId) => {
             try {
               await deleteLibraryAttachment({ attachmentId, deleteFile: true });
-              // 清理该附件的整个 MinerU 缓存目录
-              if (mineruCacheDir.trim()) {
-                const paper = papers.find((p) => p.id === paperId);
-                const attWsId = 'native-library:' + paperId + ':' + attachmentId;
-                const partialItem = {
-                  workspaceId: attWsId,
-                  itemKey: paperId,
-                  title: paper?.title || '',
-                  localPdfPath: '',
-                };
-                // 尝试所有命名格式的缓存目录
-                const cacheDirs = buildMineruCachePathCandidates(mineruCacheDir.trim(), partialItem as any);
-                for (const cache of cacheDirs) {
-                  void (async () => {
-                    try {
-                      const files = await listLocalDirectoryFiles(cache.directory);
-                      for (const file of files) {
-                        await deleteLocalFile(file.path).catch(() => {});
-                      }
-                      // 扫描子目录
-                      const subDirs = files.filter((f) => !f.name.includes('.'));
-                      for (const sub of subDirs) {
-                        try {
-                          const subFiles = await listLocalDirectoryFiles(sub.path);
-                          for (const file of subFiles) {
-                            await deleteLocalFile(file.path).catch(() => {});
-                          }
-                        } catch { /* skip */ }
-                        await deleteLocalFile(sub.path).catch(() => {});
-                      }
-                      // 最后删除目录本身
-                      await deleteLocalFile(cache.directory).catch(() => {});
-                    } catch { /* noop */ }
-                  })();
-                }
-              }
+              const paper = papers.find((p) => p.id === paperId);
+              await cleanupCachesByWorkspaceId(`native-library:${paperId}:${attachmentId}`, paper, mineruCacheDir);
               await refreshAll();
             } catch (err) {
               setError(l('删除附件失败', 'Failed to delete attachment'));
@@ -2434,11 +2459,11 @@ export default function LiteratureLibraryView({
         }
         description={
           confirmDialog?.kind === 'delete-category'
-            ? l(`删除分类“${confirmDialog.category.name}”及其所有子分类？这只会移除分类关系，不会删除磁盘上的 PDF 文件。`, `Delete category "${confirmDialog.category.name}" and all subcategories? This only removes category relations and does not delete PDF files on disk.`,
+            ? l(`删除分类“${confirmDialog.category.name}”及其所有子分类？这会删除分类下的所有文献记录、磁盘上的 PDF 文件、附件以及解析缓存。`, `Delete category "${confirmDialog.category.name}" and all subcategories? This will delete all paper records in this category, PDF files on disk, attachments, and analysis caches.`,
               )
             : confirmDialog?.kind === 'delete-paper'
               ? confirmDialog.deleteFiles
-                ? l(`从所有文献中删除“${confirmDialog.paper.title}”？这也会删除磁盘上的 PDF 文件。`, `Delete "${confirmDialog.paper.title}" from All Papers? This will also delete PDF files from disk.`,
+                ? l(`从所有文献中删除“${confirmDialog.paper.title}”？这也会删除磁盘上的 PDF 文件、附件以及解析缓存。`, `Delete "${confirmDialog.paper.title}" from All Papers? This will also delete PDF files, attachments, and analysis caches from disk.`,
                   )
                 : l(`删除“${confirmDialog.paper.title}”的文献记录？磁盘上的 PDF 文件不会被删除。`, `Delete the paper record for "${confirmDialog.paper.title}"? PDF files on disk will not be deleted.`,
                   )
@@ -2466,7 +2491,7 @@ export default function LiteratureLibraryView({
           }
 
           if (confirmDialog.kind === 'delete-category') {
-            void deleteCategoryAfterConfirm(confirmDialog.category);
+            void deleteCategoryAfterConfirm(confirmDialog.category, confirmDialog.deleteFiles);
             return;
           }
 

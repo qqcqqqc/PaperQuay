@@ -412,7 +412,8 @@ function createLibraryCommands(context) {
       });
     },
 
-    async library_delete_category({ categoryId }) {
+    async library_delete_category({ request = {} }) {
+      const { categoryId, deleteFiles } = request;
       const library = store.load();
       const target = library.categories.find((item) => item.id === categoryId);
       if (!target) throw new Error('Category does not exist');
@@ -431,10 +432,35 @@ function createLibraryCommands(context) {
       }
 
       library.categories = library.categories.filter((item) => !removeIds.has(item.id));
+      
+      const papersToDelete = new Set();
+      
       for (const paper of library.papers) {
-        paper.categoryIds = paper.categoryIds.filter((id) => !removeIds.has(id));
+        // If the paper belongs to any of the categories being removed
+        const hasRemovedCategory = paper.categoryIds.some((id) => removeIds.has(id));
+        if (hasRemovedCategory) {
+          if (deleteFiles) {
+             papersToDelete.add(paper.id);
+          } else {
+             paper.categoryIds = paper.categoryIds.filter((id) => !removeIds.has(id));
+          }
+        }
       }
+
+      if (deleteFiles && papersToDelete.size > 0) {
+        const deletedPapers = library.papers.filter((p) => papersToDelete.has(p.id));
+        for (const paper of deletedPapers) {
+           for (const attachment of paper.attachments) {
+             await fsp.rm(attachment.storedPath, { force: true }).catch(() => {});
+           }
+        }
+        library.papers = library.papers.filter((p) => !papersToDelete.has(p.id));
+      }
+
       await store.save(library);
+      
+      // Return the deleted paper ids so the frontend can clean up caches
+      return { deletedPaperIds: Array.from(papersToDelete) };
     },
 
     async library_list_papers({ request = {} }) {

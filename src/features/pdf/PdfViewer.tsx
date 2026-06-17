@@ -53,6 +53,7 @@ import {
   usePdfReadingHeatmap,
 } from './pdfReadingHeatmap';
 import { PdfThumbnailSidebar } from './PdfThumbnailSidebar';
+import { PdfFindBar } from './PdfFindBar';
 import {
   arePageHostsEqual,
   ensurePageOverlayElement,
@@ -275,6 +276,12 @@ function PdfViewer({
   const externalScrollRestoreKeyRef = useRef('');
   const pendingScrollRestoreKeyRef = useRef('');
   const lastUserScrollAtRef = useRef(0);
+
+  const findControllerRef = useRef<any>(null);
+  const [showFindBar, setShowFindBar] = useState(false);
+  const [findSearchQuery, setFindSearchQuery] = useState('');
+  const [findMatchCount, setFindMatchCount] = useState({ current: 0, total: 0 });
+  const [findStatus, setFindStatus] = useState<'pending' | 'found' | 'not-found' | 'wrapped'>('pending');
 
   const [editorTool, setEditorTool] = useState<AnnotationEditorTool>('none');
   const [pageCount, setPageCount] = useState(0);
@@ -549,6 +556,46 @@ function PdfViewer({
   const updateAnnotationFontSize = useCallback((size: number) => {
     setAnnotationFontSize(size);
   }, []);
+
+  const handleFind = useCallback((query: string, direction: 'next' | 'previous' = 'next') => {
+    if (!eventBusRef.current || !query) {
+      return;
+    }
+
+    eventBusRef.current.dispatch('find', {
+      type: '',
+      query,
+      phraseSearch: true,
+      caseSensitive: false,
+      entireWord: false,
+      highlightAll: true,
+      findPrevious: direction === 'previous',
+    });
+  }, []);
+
+  const handleFindQueryChange = useCallback((query: string) => {
+    setFindSearchQuery(query);
+    if (!query) {
+      setFindMatchCount({ current: 0, total: 0 });
+      setFindStatus('pending');
+      // Clear highlights
+      eventBusRef.current?.dispatch('find', {
+        type: '',
+        query: '',
+        phraseSearch: true,
+        caseSensitive: false,
+        entireWord: false,
+        highlightAll: true,
+        findPrevious: false,
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    if (showFindBar && findSearchQuery) {
+      handleFind(findSearchQuery);
+    }
+  }, [findSearchQuery, handleFind, showFindBar]);
 
   useEffect(() => {
     if (!annotationEditorReadyRef.current || !annotationEditorUiManagerRef.current?.updateParams) {
@@ -1575,7 +1622,19 @@ function PdfViewer({
         return;
       }
 
+      // Ctrl+F for search
+      if ((event.key === 'f' || event.key === 'F') && (event.ctrlKey || event.metaKey)) {
+        event.preventDefault();
+        setShowFindBar((current) => !current);
+        return;
+      }
+
       if (event.key === 'Escape') {
+        if (showFindBar) {
+          setShowFindBar(false);
+          event.preventDefault();
+          return;
+        }
         if (editorTool !== 'none') {
           setEditorTool('none');
           event.preventDefault();
@@ -1659,7 +1718,7 @@ function PdfViewer({
       | null = null;
 
     void import('pdfjs-dist/web/pdf_viewer.mjs')
-      .then(async ({ EventBus, PDFLinkService, PDFViewer: PdfJsViewer }) => {
+      .then(async ({ EventBus, PDFLinkService, PDFFindController, PDFViewer: PdfJsViewer }) => {
         if (cancelled) {
           return;
         }
@@ -1667,6 +1726,27 @@ function PdfViewer({
         eventBus = new EventBus();
         eventBusRef.current = eventBus;
         linkService = new PDFLinkService({ eventBus });
+        
+        const findController = new PDFFindController({
+          eventBus,
+          linkService,
+        });
+        findControllerRef.current = findController;
+
+        eventBus.on('updatefindmatchescount', (data: any) => {
+          setFindMatchCount({
+            current: data.matchesCount.current,
+            total: data.matchesCount.total,
+          });
+        });
+
+        eventBus.on('updatefindcontrolstate', (data: any) => {
+          if (data.state === 1) setFindStatus('found');
+          else if (data.state === 2) setFindStatus('not-found');
+          else if (data.state === 3) setFindStatus('wrapped');
+          else setFindStatus('pending');
+        });
+
         viewer.textContent = '';
 
         const pdfViewer = new PdfJsViewer({
@@ -1674,6 +1754,7 @@ function PdfViewer({
           viewer,
           eventBus,
           linkService,
+          findController,
           removePageBorders: true,
           annotationMode: AnnotationMode.ENABLE_FORMS,
           annotationEditorMode: AnnotationEditorType.NONE,
@@ -2584,6 +2665,17 @@ function PdfViewer({
         translationProgressCompleted={translationProgressCompleted}
         translationProgressTotal={translationProgressTotal}
         zoomLabel={zoomLabel}
+      />
+
+      <PdfFindBar
+        show={showFindBar}
+        onClose={() => setShowFindBar(false)}
+        query={findSearchQuery}
+        onQueryChange={handleFindQueryChange}
+        onFind={handleFind}
+        matchCount={findMatchCount}
+        status={findStatus}
+        l={l}
       />
 
       <div className="relative flex min-h-0 flex-1">

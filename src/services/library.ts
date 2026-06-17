@@ -101,15 +101,16 @@ export async function moveLibraryCategory(
     throw new Error(toErrorMessage(error, '移动分类失败'));
   }
 }
-
-export async function deleteLibraryCategory(categoryId: string): Promise<void> {
+export async function deleteLibraryCategory(request: {
+  categoryId: string;
+  deleteFiles?: boolean;
+}): Promise<{ deletedPaperIds: string[] }> {
   try {
-    await invoke('library_delete_category', { categoryId });
+    return await invoke<{ deletedPaperIds: string[] }>('library_delete_category', { request });
   } catch (error) {
     throw new Error(toErrorMessage(error, '删除分类失败'));
   }
 }
-
 export async function listLibraryPapers(
   request: ListPapersRequest = {},
 ): Promise<LiteraturePaper[]> {
