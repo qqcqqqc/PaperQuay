@@ -570,7 +570,7 @@ function createLibraryCommands(context) {
               createdAt: now(),
               missing: false,
             }],
-            journalMetadata: null,
+            journalMetadata: metadata.journalMetadata ?? null,
           };
           library.papers.push(paper);
           results.push({ sourcePath, paper, duplicated: false, existingPaperId: null, status: 'imported', message: 'Imported' });
