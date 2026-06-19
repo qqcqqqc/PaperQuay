@@ -601,6 +601,10 @@ function createLibraryCommands(context) {
       for (const key of ['title', 'year', 'publication', 'doi', 'url', 'abstractText', 'userNote', 'aiSummary', 'citation', 'journalMetadata']) {
         if (request[key] !== undefined) paper[key] = request[key];
       }
+
+      if (request.journalMetadata !== undefined) {
+        console.log('[EasyScholar] Storing journalMetadata for paper:', paper.id, 'hasOfficialRank:', !!request.journalMetadata?.officialRank, 'hasSciif:', !!request.journalMetadata?.officialRank?.all?.sciif);
+      }
       if (request.keywords) paper.keywords = request.keywords.map(cleanString).filter(Boolean);
       if (request.authors) paper.authors = request.authors.map(cleanString).filter(Boolean).map(normalizeAuthor);
       if (request.tags) paper.tags = request.tags.map(cleanString).filter(Boolean).map(normalizeTag);
