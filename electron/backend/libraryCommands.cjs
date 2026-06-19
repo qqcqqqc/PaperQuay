@@ -310,7 +310,7 @@ async function lookupEasyScholarMetadata({ publication, settings }) {
     return null;
   }
 
-  const endpoint = buildUrl('https://easyscholar.cc/open/getPublicationRank', {
+  const endpoint = buildUrl('https://www.easyscholar.cc/open/getPublicationRank', {
     secretKey: settings.easyScholarApiKey,
     publicationName: publication,
   });
