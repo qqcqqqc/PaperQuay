@@ -307,26 +307,45 @@ async function lookupCrossrefMetadata({ doi, title }) {
 
 async function lookupEasyScholarMetadata({ publication, settings }) {
   if (!settings?.easyScholarEnabled || !settings?.easyScholarApiKey || !publication) {
+    console.log('[EasyScholar] Skipped — enabled:', !!settings?.easyScholarEnabled, 'hasKey:', !!settings?.easyScholarApiKey, 'publication:', publication);
     return null;
   }
 
-  const endpoint = buildUrl('https://www.easyscholar.cc/open/getPublicationRank', {
+  const endpoint = buildUrl('https://easyscholar.cc/open/getPublicationRank', {
     secretKey: settings.easyScholarApiKey,
     publicationName: publication,
   });
 
+  console.log('[EasyScholar] Fetching:', endpoint.replace(settings.easyScholarApiKey, '***'));
+
   try {
-    const data = await readRequestJson(await fetch(endpoint), 'EasyScholar metadata');
-    if (data?.code !== 200 || !data.data) {
+    const response = await fetch(endpoint);
+    console.log('[EasyScholar] Response status:', response.status);
+    const rawText = await response.text();
+    console.log('[EasyScholar] Raw response (first 500 chars):', rawText.slice(0, 500));
+    
+    let data;
+    try {
+      data = JSON.parse(rawText);
+    } catch (e) {
+      console.error('[EasyScholar] JSON parse failed:', e.message);
       return null;
     }
+
+    console.log('[EasyScholar] code:', data?.code, 'hasData:', !!data?.data);
+    if (data?.code !== 200 || !data.data) {
+      console.log('[EasyScholar] API returned error code or no data:', data?.code, data?.msg);
+      return null;
+    }
+
+    console.log('[EasyScholar] Data type:', typeof data.data, 'keys:', data.data ? Object.keys(data.data) : 'none');
 
     return {
       source: 'easyscholar',
       journalMetadata: data.data,
     };
   } catch (error) {
-    console.error('EasyScholar lookup failed:', error);
+    console.error('[EasyScholar] Fetch failed:', error.message);
     return null;
   }
 }

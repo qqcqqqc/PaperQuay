@@ -44,22 +44,7 @@ export function EasyScholarBadges({
   if (!data) return null;
 
   const badges: { label: string; color: string }[] = [];
-
-  // 兼容新旧两种 API 返回结构：
-  // 旧版：{ officialRank: { all: { sciif, casZone, ... } } }
-  // 新版：直接在顶层有 { sciif, casZone, customRank, ... }
-  let official: Record<string, any> = {};
-  if (data.officialRank?.all) {
-    official = data.officialRank.all;
-  } else if (data.sciif != null || data.casZone != null || data.pku != null) {
-    // 如果顶层直接有等级字段，说明是新版格式
-    official = data;
-  }
-
-  // Fallback：如果没找到，再试试 data.rank 或 data.info
-  if (Object.keys(official).length === 0) {
-    official = data.rank || data.info || data || {};
-  }
+  const official = data.officialRank?.all || {};
 
   // 1. Impact Factor
   if (displayItems.includes('if') && official.sciif) {
