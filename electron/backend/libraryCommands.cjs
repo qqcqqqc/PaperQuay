@@ -572,6 +572,7 @@ function createLibraryCommands(context) {
             }],
             journalMetadata: metadata.journalMetadata ?? null,
           };
+          console.log('[EasyScholar] Importing paper:', paper.id, 'journalMetadata:', !!metadata.journalMetadata, 'hasOfficialRank:', !!metadata.journalMetadata?.officialRank);
           library.papers.push(paper);
           results.push({ sourcePath, paper, duplicated: false, existingPaperId: null, status: 'imported', message: 'Imported' });
         } catch (error) {
