@@ -333,6 +333,8 @@ async function lookupEasyScholarMetadata({ publication, settings }) {
     }
 
     console.log('[EasyScholar] code:', data?.code, 'hasData:', !!data?.data);
+    console.log('[EasyScholar] officialRank type:', typeof data.data?.officialRank, 'all type:', typeof data.data?.officialRank?.all, 'all value:', data.data?.officialRank?.all ? 'OBJECT' : JSON.stringify(data.data?.officialRank?.all));
+    console.log('[EasyScholar] sciif:', data.data?.officialRank?.all?.sciif);
     if (data?.code !== 200 || !data.data) {
       console.log('[EasyScholar] API returned error code or no data:', data?.code, data?.msg);
       return null;
@@ -572,7 +574,7 @@ function createLibraryCommands(context) {
             }],
             journalMetadata: metadata.journalMetadata ?? null,
           };
-          console.log('[EasyScholar] Importing paper:', paper.id, 'journalMetadata:', !!metadata.journalMetadata, 'hasOfficialRank:', !!metadata.journalMetadata?.officialRank);
+          console.log('[EasyScholar] Import paper — journalMetadata:', !!metadata.journalMetadata, 'officialRank:', !!metadata.journalMetadata?.officialRank, 'all:', !!metadata.journalMetadata?.officialRank?.all, 'sciif:', metadata.journalMetadata?.officialRank?.all?.sciif);
           library.papers.push(paper);
           results.push({ sourcePath, paper, duplicated: false, existingPaperId: null, status: 'imported', message: 'Imported' });
         } catch (error) {
