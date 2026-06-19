@@ -800,9 +800,11 @@ function createLibraryCommands(context) {
             baseResult.source += '+easyscholar';
           }
           baseResult.journalMetadata = easyScholarResult.journalMetadata;
+          console.log('[EasyScholar] Before IPC return — journalMetadata hasOfficialRank:', !!baseResult?.journalMetadata?.officialRank, 'all:', !!baseResult?.journalMetadata?.officialRank?.all, 'sciif:', baseResult?.journalMetadata?.officialRank?.all?.sciif);
         }
       }
 
+      console.log('[EasyScholar] IPC return — hasJournalMetadata:', !!baseResult?.journalMetadata, 'officialRank:', !!baseResult?.journalMetadata?.officialRank);
       return baseResult;
     },
   };
