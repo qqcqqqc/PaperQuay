@@ -575,6 +575,24 @@ function createLibraryCommands(context) {
             journalMetadata: metadata.journalMetadata ?? null,
           };
           console.log('[EasyScholar] Import paper — journalMetadata:', !!metadata.journalMetadata, 'officialRank:', !!metadata.journalMetadata?.officialRank, 'all:', !!metadata.journalMetadata?.officialRank?.all, 'sciif:', metadata.journalMetadata?.officialRank?.all?.sciif);
+
+          // Fallback: if frontend didn't pass journalMetadata but paper has a publication,
+          // fetch EasyScholar data directly in the backend
+          if (!paper.journalMetadata && paper.publication && library.settings.easyScholarEnabled) {
+            try {
+              const esResult = await lookupEasyScholarMetadata({
+                publication: paper.publication,
+                settings: library.settings,
+              });
+              if (esResult) {
+                paper.journalMetadata = esResult.journalMetadata;
+                console.log('[EasyScholar] Backend-fetched journalMetadata for:', paper.publication, 'sciif:', esResult.journalMetadata?.officialRank?.all?.sciif);
+              }
+            } catch (e) {
+              console.error('[EasyScholar] Backend fetch failed for:', paper.publication, e.message);
+            }
+          }
+
           library.papers.push(paper);
           results.push({ sourcePath, paper, duplicated: false, existingPaperId: null, status: 'imported', message: 'Imported' });
         } catch (error) {
