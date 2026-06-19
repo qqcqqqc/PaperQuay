@@ -1173,7 +1173,8 @@ export default function LiteratureLibraryView({
             mergedDraft.publication !== draft.publication ||
             mergedDraft.doi !== draft.doi ||
             mergedDraft.url !== draft.url ||
-            mergedDraft.abstractText !== draft.abstractText;
+            mergedDraft.abstractText !== draft.abstractText ||
+            Boolean(mergedDraft.journalMetadata) !== Boolean(draft.journalMetadata);
 
           if (!changed) {
             missedCount += 1;
