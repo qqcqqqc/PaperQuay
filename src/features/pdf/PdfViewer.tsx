@@ -2606,14 +2606,29 @@ function PdfViewer({
       if (!viewer) return;
 
       const rect = container.getBoundingClientRect();
-      // PDF.js updateScale accepts origin: [mouseY, mouseX] relative to container
-      const origin = [event.clientY - rect.top, event.clientX - rect.left];
+      // PDF.js expects origin: [left, top] (x, y) relative to container
+      const origin = [event.clientX - rect.left, event.clientY - rect.top];
+      const oldScale = viewer.currentScale;
+      const oldScrollTop = container.scrollTop;
+      const oldScrollLeft = container.scrollLeft;
+
+      // Save document-relative position of mouse
+      const mouseDocY = oldScrollTop + origin[1];
+      const mouseDocX = oldScrollLeft + origin[0];
 
       if (event.deltaY < 0) {
         viewer.increaseScale({ origin });
       } else {
         viewer.decreaseScale({ origin });
       }
+
+      // Force scroll correction after viewer update
+      const newScale = viewer.currentScale;
+      const ratio = newScale / oldScale;
+      requestAnimationFrame(() => {
+        container.scrollLeft = Math.round(mouseDocX * ratio - origin[0]);
+        container.scrollTop = Math.round(mouseDocY * ratio - origin[1]);
+      });
     };
 
     container.addEventListener('wheel', handleWheel, { passive: false });
