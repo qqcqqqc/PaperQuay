@@ -2604,6 +2604,8 @@ function PdfViewer({
 
       const viewer = pdfViewerRef.current;
       if (!viewer) return;
+      const pages = (viewer as any)._pages;
+      if (!pages?.length) return;
 
       const oldScale = viewer.currentScale || 1;
 
@@ -2616,37 +2618,18 @@ function PdfViewer({
 
       if (newScale === oldScale) return;
 
-      // Save mouse position relative to document content
-      const rect = container.getBoundingClientRect();
-      const mouseViewportX = event.clientX - rect.left;
-      const mouseViewportY = event.clientY - rect.top;
-      const mouseDocX = mouseViewportX + container.scrollLeft;
-      const mouseDocY = mouseViewportY + container.scrollTop;
+      // Save scroll position before zoom
+      const savedScrollTop = container.scrollTop;
+      const savedScrollLeft = container.scrollLeft;
 
-      // Compute target scroll to keep content under mouse
-      const ratio = newScale / oldScale;
-      const targetLeft = mouseDocX * ratio - mouseViewportX;
-      const targetTop = mouseDocY * ratio - mouseViewportY;
-
-      // Apply scale — this triggers update() which may reset scroll
+      // Apply new scale
       viewer.currentScale = newScale;
 
-      // Force the correct scroll position aggressively:
-      // 1. Immediately after the synchronous update()
-      // 2. On next animation frame (after layout flush)
-      // 3. On the frame after that (belt and suspenders)
-      container.scrollLeft = targetLeft;
-      container.scrollTop = targetTop;
-
-      let attempt = 0;
-      const MAX_ATTEMPTS = 8;
-      const retry = () => {
-        if (++attempt > MAX_ATTEMPTS) return;
-        container.scrollLeft = targetLeft;
-        container.scrollTop = targetTop;
-        requestAnimationFrame(retry);
-      };
-      requestAnimationFrame(retry);
+      // After update(), PDF.js may have repositioned to a page boundary.
+      // Restore the proportional scroll position.
+      const ratio = newScale / oldScale;
+      container.scrollLeft = Math.round(savedScrollLeft * ratio);
+      container.scrollTop = Math.round(savedScrollTop * ratio);
     };
 
     container.addEventListener('wheel', handleWheel, { passive: false });
