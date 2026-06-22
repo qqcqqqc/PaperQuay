@@ -2607,7 +2607,7 @@ function PdfViewer({
 
       const oldScale = viewer.currentScale || 1;
 
-      // Compute new scale: adaptive step size
+      // Compute new scale with adaptive step
       const step = oldScale < 1.5 ? 0.1 : oldScale < 3 ? 0.25 : 0.5;
       const delta = event.deltaY < 0 ? step : -step;
       let newScale = oldScale + delta;
@@ -2616,22 +2616,37 @@ function PdfViewer({
 
       if (newScale === oldScale) return;
 
-      // Capture mouse position relative to document content
+      // Save mouse position relative to document content
       const rect = container.getBoundingClientRect();
       const mouseViewportX = event.clientX - rect.left;
       const mouseViewportY = event.clientY - rect.top;
       const mouseDocX = mouseViewportX + container.scrollLeft;
       const mouseDocY = mouseViewportY + container.scrollTop;
 
-      // Set new scale directly (triggers update() internally)
+      // Compute target scroll to keep content under mouse
+      const ratio = newScale / oldScale;
+      const targetLeft = mouseDocX * ratio - mouseViewportX;
+      const targetTop = mouseDocY * ratio - mouseViewportY;
+
+      // Apply scale — this triggers update() which may reset scroll
       viewer.currentScale = newScale;
 
-      // Restore scroll after update() flushes — keep mouse position stable
-      requestAnimationFrame(() => {
-        const ratio = newScale / oldScale;
-        container.scrollLeft = mouseDocX * ratio - mouseViewportX;
-        container.scrollTop = mouseDocY * ratio - mouseViewportY;
-      });
+      // Force the correct scroll position aggressively:
+      // 1. Immediately after the synchronous update()
+      // 2. On next animation frame (after layout flush)
+      // 3. On the frame after that (belt and suspenders)
+      container.scrollLeft = targetLeft;
+      container.scrollTop = targetTop;
+
+      let attempt = 0;
+      const MAX_ATTEMPTS = 8;
+      const retry = () => {
+        if (++attempt > MAX_ATTEMPTS) return;
+        container.scrollLeft = targetLeft;
+        container.scrollTop = targetTop;
+        requestAnimationFrame(retry);
+      };
+      requestAnimationFrame(retry);
     };
 
     container.addEventListener('wheel', handleWheel, { passive: false });
