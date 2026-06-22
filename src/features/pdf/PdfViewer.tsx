@@ -2605,32 +2605,32 @@ function PdfViewer({
       const viewer = pdfViewerRef.current;
       if (!viewer) return;
 
-      const rect = container.getBoundingClientRect();
       const oldScale = viewer.currentScale || 1;
 
-      // Mouse position relative to container viewport
-      const mouseContainerX = event.clientX - rect.left;
-      const mouseContainerY = event.clientY - rect.top;
+      // Compute new scale: adaptive step size
+      const step = oldScale < 1.5 ? 0.1 : oldScale < 3 ? 0.25 : 0.5;
+      const delta = event.deltaY < 0 ? step : -step;
+      let newScale = oldScale + delta;
+      newScale = Math.max(0.25, Math.min(5, newScale));
+      newScale = Math.round(newScale * 100) / 100;
 
-      // Mouse position relative to scrolled document content
-      const mouseDocX = mouseContainerX + container.scrollLeft;
-      const mouseDocY = mouseContainerY + container.scrollTop;
+      if (newScale === oldScale) return;
 
-      if (event.deltaY < 0) {
-        viewer.increaseScale?.();
-      } else {
-        viewer.decreaseScale?.();
-      }
+      // Capture mouse position relative to document content
+      const rect = container.getBoundingClientRect();
+      const mouseViewportX = event.clientX - rect.left;
+      const mouseViewportY = event.clientY - rect.top;
+      const mouseDocX = mouseViewportX + container.scrollLeft;
+      const mouseDocY = mouseViewportY + container.scrollTop;
 
-      // After viewer layout, adjust scroll to keep content under cursor
+      // Set new scale directly (triggers update() internally)
+      viewer.currentScale = newScale;
+
+      // Restore scroll after update() flushes — keep mouse position stable
       requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          const newScale = viewer.currentScale || oldScale;
-          if (newScale === oldScale) return;
-          const ratio = newScale / oldScale;
-          container.scrollLeft = mouseDocX * ratio - mouseContainerX;
-          container.scrollTop = mouseDocY * ratio - mouseContainerY;
-        });
+        const ratio = newScale / oldScale;
+        container.scrollLeft = mouseDocX * ratio - mouseViewportX;
+        container.scrollTop = mouseDocY * ratio - mouseViewportY;
       });
     };
 

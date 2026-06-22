@@ -1292,9 +1292,6 @@ export default function LiteratureLibraryView({
         const metadata = Object.fromEntries(
           drafts.map((draft) => [draft.path, metadataFromDraft(draft)]),
         );
-        console.log('[EasyScholar] Metadata sent to backend — paths:', Object.keys(metadata).length, 'first journalMetadata:', Object.values(metadata)[0]?.journalMetadata ? 'HAS_DATA' : 'NULL');
-        const firstMeta = Object.values(metadata)[0] as any;
-        console.log('[EasyScholar] Pre-IPC journalMetadata details — all:', !!firstMeta?.journalMetadata?.officialRank?.all, 'sciif:', firstMeta?.journalMetadata?.officialRank?.all?.sciif, 'keys:', firstMeta?.journalMetadata ? Object.keys(firstMeta.journalMetadata) : 'NULL');
         const imported = await importPdfsToLibrary({
           paths: drafts.map((draft) => draft.path),
           targetCategoryId: categoryId || null,

@@ -121,7 +121,6 @@ export function splitAuthors(value: string): string[] {
 }
 
 export function metadataFromDraft(draft: ImportDraftItem): ImportPdfMetadata {
-  console.log('[EasyScholar] metadataFromDraft — draft.journalMetadata:', !!draft.journalMetadata, 'hasOfficialRank:', !!draft.journalMetadata?.officialRank, 'path:', draft.path.slice(-40));
   return {
     title: draft.title.trim() || titleFromPdfPath(draft.path),
     authors: splitAuthors(draft.authors),

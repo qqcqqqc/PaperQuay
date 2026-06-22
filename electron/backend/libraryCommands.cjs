@@ -307,7 +307,6 @@ async function lookupCrossrefMetadata({ doi, title }) {
 
 async function lookupEasyScholarMetadata({ publication, settings }) {
   if (!settings?.easyScholarEnabled || !settings?.easyScholarApiKey || !publication) {
-    console.log('[EasyScholar] Skipped — enabled:', !!settings?.easyScholarEnabled, 'hasKey:', !!settings?.easyScholarApiKey, 'publication:', publication);
     return null;
   }
 
@@ -316,13 +315,9 @@ async function lookupEasyScholarMetadata({ publication, settings }) {
     publicationName: publication,
   });
 
-  console.log('[EasyScholar] Fetching:', endpoint.replace(settings.easyScholarApiKey, '***'));
-
   try {
     const response = await fetch(endpoint);
-    console.log('[EasyScholar] Response status:', response.status);
     const rawText = await response.text();
-    console.log('[EasyScholar] Raw response (first 500 chars):', rawText.slice(0, 500));
     
     let data;
     try {
@@ -332,15 +327,9 @@ async function lookupEasyScholarMetadata({ publication, settings }) {
       return null;
     }
 
-    console.log('[EasyScholar] code:', data?.code, 'hasData:', !!data?.data);
-    console.log('[EasyScholar] officialRank type:', typeof data.data?.officialRank, 'all type:', typeof data.data?.officialRank?.all, 'all value:', data.data?.officialRank?.all ? 'OBJECT' : JSON.stringify(data.data?.officialRank?.all));
-    console.log('[EasyScholar] sciif:', data.data?.officialRank?.all?.sciif);
     if (data?.code !== 200 || !data.data) {
-      console.log('[EasyScholar] API returned error code or no data:', data?.code, data?.msg);
       return null;
     }
-
-    console.log('[EasyScholar] Data type:', typeof data.data, 'keys:', data.data ? Object.keys(data.data) : 'none');
 
     return {
       source: 'easyscholar',
@@ -574,7 +563,6 @@ function createLibraryCommands(context) {
             }],
             journalMetadata: metadata.journalMetadata ?? null,
           };
-          console.log('[EasyScholar] Import paper — journalMetadata:', !!metadata.journalMetadata, 'officialRank:', !!metadata.journalMetadata?.officialRank, 'all:', !!metadata.journalMetadata?.officialRank?.all, 'sciif:', metadata.journalMetadata?.officialRank?.all?.sciif);
 
           // Fallback: if frontend didn't pass journalMetadata but paper has a publication,
           // fetch EasyScholar data directly in the backend
@@ -586,10 +574,9 @@ function createLibraryCommands(context) {
               });
               if (esResult) {
                 paper.journalMetadata = esResult.journalMetadata;
-                console.log('[EasyScholar] Backend-fetched journalMetadata for:', paper.publication, 'sciif:', esResult.journalMetadata?.officialRank?.all?.sciif);
               }
             } catch (e) {
-              console.error('[EasyScholar] Backend fetch failed for:', paper.publication, e.message);
+              // noop
             }
           }
 
@@ -621,10 +608,6 @@ function createLibraryCommands(context) {
 
       for (const key of ['title', 'year', 'publication', 'doi', 'url', 'abstractText', 'userNote', 'aiSummary', 'citation', 'journalMetadata']) {
         if (request[key] !== undefined) paper[key] = request[key];
-      }
-
-      if (request.journalMetadata !== undefined) {
-        console.log('[EasyScholar] Storing journalMetadata for paper:', paper.id, 'hasOfficialRank:', !!request.journalMetadata?.officialRank, 'hasSciif:', !!request.journalMetadata?.officialRank?.all?.sciif);
       }
       if (request.keywords) paper.keywords = request.keywords.map(cleanString).filter(Boolean);
       if (request.authors) paper.authors = request.authors.map(cleanString).filter(Boolean).map(normalizeAuthor);
@@ -820,11 +803,9 @@ function createLibraryCommands(context) {
             baseResult.source += '+easyscholar';
           }
           baseResult.journalMetadata = easyScholarResult.journalMetadata;
-          console.log('[EasyScholar] Before IPC return — journalMetadata hasOfficialRank:', !!baseResult?.journalMetadata?.officialRank, 'all:', !!baseResult?.journalMetadata?.officialRank?.all, 'sciif:', baseResult?.journalMetadata?.officialRank?.all?.sciif);
         }
       }
 
-      console.log('[EasyScholar] IPC return — hasJournalMetadata:', !!baseResult?.journalMetadata, 'officialRank:', !!baseResult?.journalMetadata?.officialRank);
       return baseResult;
     },
 

@@ -41,16 +41,10 @@ export function EasyScholarBadges({
   displayItems: string[];
   isList?: boolean;
 }) {
-  console.log('[EasyScholar Badges] data:', !!data, 'displayItems:', displayItems, 'hasOfficialRank:', !!data?.officialRank, 'hasSciif:', !!data?.officialRank?.all?.sciif, 'sciif:', data?.officialRank?.all?.sciif);
-  console.log('[EasyScholar Badges] data keys:', data ? Object.keys(data) : 'null');
-  console.log('[EasyScholar Badges] officialRank:', data?.officialRank);
-  console.log('[EasyScholar Badges] officialRank.all:', data?.officialRank?.all);
   if (!data) return null;
 
   const badges: { label: string; color: string }[] = [];
   const official = data.officialRank?.all || {};
-
-  console.log('[EasyScholar Badges] official:', Object.keys(official), 'sciif:', official.sciif, 'sci:', official.sci, 'displayItems:', displayItems);
 
   // 1. Impact Factor
   if (displayItems.includes('if') && official.sciif) {
