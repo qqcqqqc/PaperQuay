@@ -224,3 +224,14 @@ export async function relocateLibraryAttachment(
     throw new Error(toErrorMessage(error, '重新定位 PDF 文件失败'));
   }
 }
+
+export async function backfillEasyScholarMetadata(): Promise<{
+  updatedCount: number;
+  skippedCount: number;
+}> {
+  try {
+    return await invoke<{ updatedCount: number; skippedCount: number }>('library_backfill_easyscholar');
+  } catch (error) {
+    throw new Error(toErrorMessage(error, '补全 EasyScholar 数据失败'));
+  }
+}

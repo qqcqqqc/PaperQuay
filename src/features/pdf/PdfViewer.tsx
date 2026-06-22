@@ -2602,12 +2602,36 @@ function PdfViewer({
 
       event.preventDefault();
 
+      const viewer = pdfViewerRef.current;
+      if (!viewer) return;
+
+      const rect = container.getBoundingClientRect();
+      const oldScale = viewer.currentScale || 1;
+
+      // Mouse position relative to container viewport
+      const mouseContainerX = event.clientX - rect.left;
+      const mouseContainerY = event.clientY - rect.top;
+
+      // Mouse position relative to scrolled document content
+      const mouseDocX = mouseContainerX + container.scrollLeft;
+      const mouseDocY = mouseContainerY + container.scrollTop;
+
       if (event.deltaY < 0) {
-        pdfViewerRef.current?.increaseScale?.();
-        return;
+        viewer.increaseScale?.();
+      } else {
+        viewer.decreaseScale?.();
       }
 
-      pdfViewerRef.current?.decreaseScale?.();
+      // After viewer layout, adjust scroll to keep content under cursor
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          const newScale = viewer.currentScale || oldScale;
+          if (newScale === oldScale) return;
+          const ratio = newScale / oldScale;
+          container.scrollLeft = mouseDocX * ratio - mouseContainerX;
+          container.scrollTop = mouseDocY * ratio - mouseContainerY;
+        });
+      });
     };
 
     container.addEventListener('wheel', handleWheel, { passive: false });

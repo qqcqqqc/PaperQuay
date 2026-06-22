@@ -827,6 +827,49 @@ function createLibraryCommands(context) {
       console.log('[EasyScholar] IPC return — hasJournalMetadata:', !!baseResult?.journalMetadata, 'officialRank:', !!baseResult?.journalMetadata?.officialRank);
       return baseResult;
     },
+
+    async library_backfill_easyscholar() {
+      const library = store.load();
+      if (!library.settings.easyScholarEnabled || !library.settings.easyScholarApiKey) {
+        return { updatedCount: 0, skippedCount: 0, reason: 'EasyScholar not enabled or no API key' };
+      }
+
+      let updatedCount = 0;
+      let skippedCount = 0;
+
+      for (const paper of library.papers) {
+        if (!paper.publication) {
+          skippedCount += 1;
+          continue;
+        }
+        if (paper.journalMetadata?.officialRank?.all?.sciif) {
+          skippedCount += 1;
+          continue;
+        }
+
+        try {
+          const esResult = await lookupEasyScholarMetadata({
+            publication: paper.publication,
+            settings: library.settings,
+          });
+
+          if (esResult) {
+            paper.journalMetadata = esResult.journalMetadata;
+            paper.updatedAt = now();
+            updatedCount += 1;
+            console.log('[EasyScholar] Backfill — updated:', paper.publication, 'sciif:', esResult.journalMetadata?.officialRank?.all?.sciif);
+          } else {
+            skippedCount += 1;
+          }
+        } catch (e) {
+          console.error('[EasyScholar] Backfill failed for:', paper.publication, e.message);
+          skippedCount += 1;
+        }
+      }
+
+      await store.save(library);
+      return { updatedCount, skippedCount };
+    },
   };
 
   return commands;

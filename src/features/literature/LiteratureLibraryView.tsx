@@ -18,6 +18,7 @@ import { extractLocalPdfMetadataPreview } from '../../services/pdfMetadata';
 import {
   addAttachmentToPaper,
   assignPaperToLibraryCategory,
+  backfillEasyScholarMetadata,
   cleanupMissingLibraryPapers,
   createLibraryCategory,
   deleteLibraryAttachment,
@@ -430,6 +431,16 @@ export default function LiteratureLibraryView({
       }
     } catch {
       // 清理失败不影响正常加载
+    }
+
+    // 自动补全旧论文的 EasyScholar 标签
+    try {
+      const esResult = await backfillEasyScholarMetadata();
+      if (esResult.updatedCount > 0) {
+        console.log('[EasyScholar] Backfilled ' + esResult.updatedCount + ' papers, skipped ' + esResult.skippedCount);
+      }
+    } catch {
+      // 补全失败不影响正常加载
     }
 
     const [nextCategories, , allPapers] = await Promise.all([
