@@ -2605,30 +2605,30 @@ function PdfViewer({
       const viewer = pdfViewerRef.current;
       if (!viewer) return;
 
-      const rect = container.getBoundingClientRect();
-      // PDF.js expects origin: [left, top] (x, y) relative to container
-      const origin = [event.clientX - rect.left, event.clientY - rect.top];
+      // Compute new scale
       const oldScale = viewer.currentScale;
-      const oldScrollTop = container.scrollTop;
-      const oldScrollLeft = container.scrollLeft;
+      const step = oldScale < 1.5 ? 0.1 : oldScale < 3 ? 0.25 : 0.5;
+      const delta = event.deltaY < 0 ? step : -step;
+      let newScale = oldScale + delta;
+      newScale = Math.max(0.25, Math.min(5, newScale));
+      newScale = Math.round(newScale * 100) / 100;
 
-      // Save document-relative position of mouse
-      const mouseDocY = oldScrollTop + origin[1];
-      const mouseDocX = oldScrollLeft + origin[0];
+      if (newScale === oldScale) return;
 
-      if (event.deltaY < 0) {
-        viewer.increaseScale({ origin });
-      } else {
-        viewer.decreaseScale({ origin });
-      }
+      // Save mouse document position
+      const rect = container.getBoundingClientRect();
+      const mouseViewportX = event.clientX - rect.left;
+      const mouseViewportY = event.clientY - rect.top;
+      const mouseDocX = mouseViewportX + container.scrollLeft;
+      const mouseDocY = mouseViewportY + container.scrollTop;
 
-      // Force scroll correction after viewer update
-      const newScale = viewer.currentScale;
+      // Set new scale using viewer's normal flow (with overflow-anchor:none so scroll anchoring won't fight us)
+      viewer.currentScale = newScale;
+
+      // Restore mouse-centered scroll position
       const ratio = newScale / oldScale;
-      requestAnimationFrame(() => {
-        container.scrollLeft = Math.round(mouseDocX * ratio - origin[0]);
-        container.scrollTop = Math.round(mouseDocY * ratio - origin[1]);
-      });
+      container.scrollLeft = Math.round(mouseDocX * ratio - mouseViewportX);
+      container.scrollTop = Math.round(mouseDocY * ratio - mouseViewportY);
     };
 
     container.addEventListener('wheel', handleWheel, { passive: false });
@@ -2738,7 +2738,7 @@ function PdfViewer({
         <div
           ref={containerRef}
           className={cn(
-            'pdf-annotation-scroll absolute inset-0 overflow-auto px-5 pt-5',
+            'pdf-annotation-scroll absolute inset-0 overflow-auto px-5 pt-5 [overflow-anchor:none]',
             showReadingHeatmapBar ? 'pb-24' : 'pb-5',
           )}
           onMouseUp={active ? () => scheduleSelectionCommit() : undefined}
