@@ -2604,32 +2604,16 @@ function PdfViewer({
 
       const viewer = pdfViewerRef.current;
       if (!viewer) return;
-      const pages = (viewer as any)._pages;
-      if (!pages?.length) return;
 
-      const oldScale = viewer.currentScale || 1;
+      const rect = container.getBoundingClientRect();
+      // PDF.js updateScale accepts origin: [mouseY, mouseX] relative to container
+      const origin = [event.clientY - rect.top, event.clientX - rect.left];
 
-      // Compute new scale with adaptive step
-      const step = oldScale < 1.5 ? 0.1 : oldScale < 3 ? 0.25 : 0.5;
-      const delta = event.deltaY < 0 ? step : -step;
-      let newScale = oldScale + delta;
-      newScale = Math.max(0.25, Math.min(5, newScale));
-      newScale = Math.round(newScale * 100) / 100;
-
-      if (newScale === oldScale) return;
-
-      // Save scroll position before zoom
-      const savedScrollTop = container.scrollTop;
-      const savedScrollLeft = container.scrollLeft;
-
-      // Apply new scale
-      viewer.currentScale = newScale;
-
-      // After update(), PDF.js may have repositioned to a page boundary.
-      // Restore the proportional scroll position.
-      const ratio = newScale / oldScale;
-      container.scrollLeft = Math.round(savedScrollLeft * ratio);
-      container.scrollTop = Math.round(savedScrollTop * ratio);
+      if (event.deltaY < 0) {
+        viewer.increaseScale({ origin });
+      } else {
+        viewer.decreaseScale({ origin });
+      }
     };
 
     container.addEventListener('wheel', handleWheel, { passive: false });
