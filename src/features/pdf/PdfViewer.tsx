@@ -277,6 +277,8 @@ function PdfViewer({
   const externalScrollRestoreKeyRef = useRef('');
   const pendingScrollRestoreKeyRef = useRef('');
   const lastUserScrollAtRef = useRef(0);
+  const isZoomingRef = useRef<boolean>(false);
+  const zoomTimeoutRef = useRef<number | null>(null);
 
   const findControllerRef = useRef<any>(null);
   const [showFindBar, setShowFindBar] = useState(false);
@@ -821,6 +823,129 @@ function PdfViewer({
     return true;
   }, [getSavedScrollPage, updateLocalScrollPosition]);
 
+
+  const zoomTo = useCallback((newScale: number, centerType: 'mouse' | 'viewport', mouseEvent?: MouseEvent | WheelEvent) => {
+    const viewer = pdfViewerRef.current;
+    const container = containerRef.current;
+    if (!viewer || !container) return;
+
+    const oldScale = viewer.currentScale;
+    if (newScale === oldScale) return;
+
+    let centerX = 0;
+    let centerY = 0;
+
+    if (centerType === 'mouse' && mouseEvent) {
+      const rect = container.getBoundingClientRect();
+      centerX = mouseEvent.clientX - rect.left;
+      centerY = mouseEvent.clientY - rect.top;
+    } else {
+      centerX = container.clientWidth / 2;
+      centerY = container.clientHeight / 2;
+    }
+
+    const docCenterX = centerX + container.scrollLeft;
+    const docCenterY = centerY + container.scrollTop;
+
+    // Find the closest page unconditionally
+    const pages = Array.from(((viewer.viewer?.querySelectorAll('.page') as any) || []) as any) as HTMLDivElement[];
+    if (pages.length === 0) {
+      viewer.currentScale = newScale;
+      return;
+    }
+
+    let targetPage = pages[0];
+    let minDistance = Infinity;
+
+    for (const page of pages) {
+      const pageTop = page.offsetTop;
+      const pageBottom = pageTop + page.clientHeight;
+      
+      let dist = 0;
+      if (docCenterY < pageTop) {
+        dist = pageTop - docCenterY;
+      } else if (docCenterY > pageBottom) {
+        dist = docCenterY - pageBottom;
+      }
+
+      if (dist < minDistance) {
+        minDistance = dist;
+        targetPage = page;
+        if (dist === 0) break; // Inside the page
+      }
+    }
+
+    const targetPageIndex = pages.indexOf(targetPage);
+    const pageRatioX = targetPage.clientWidth > 0 ? (docCenterX - targetPage.offsetLeft) / targetPage.clientWidth : 0;
+    const pageRatioY = targetPage.clientHeight > 0 ? (docCenterY - targetPage.offsetTop) / targetPage.clientHeight : 0;
+
+    // Block React scroll restoration
+    isZoomingRef.current = true;
+    if (zoomTimeoutRef.current) window.clearTimeout(zoomTimeoutRef.current);
+    zoomTimeoutRef.current = window.setTimeout(() => {
+      isZoomingRef.current = false;
+      zoomTimeoutRef.current = null;
+    }, 1500) as unknown as number;
+
+    // Apply native scale
+    try {
+      const scaleFactor = newScale * (96 / 72);
+      if (viewer.viewer) {
+        viewer.viewer.style.setProperty('--scale-factor', scaleFactor.toString());
+      }
+      if (typeof viewer.refresh === 'function') {
+        viewer.refresh(false, { scale: newScale });
+        viewer._currentScale = newScale;
+        viewer._currentScaleValue = newScale.toString();
+      } else {
+        viewer.currentScale = newScale;
+      }
+    } catch (e) {
+      viewer.currentScale = newScale;
+    }
+
+    // Force reflow
+    const _reflow = container.scrollHeight;
+
+    // Find the new page element
+    const newPages = Array.from(((viewer.viewer?.querySelectorAll('.page') as any) || []) as any) as HTMLDivElement[];
+    const newTargetPage = newPages[targetPageIndex];
+
+    if (newTargetPage) {
+      const newScrollLeft = Math.round(newTargetPage.offsetLeft + pageRatioX * newTargetPage.clientWidth - centerX);
+      const newScrollTop = Math.round(newTargetPage.offsetTop + pageRatioY * newTargetPage.clientHeight - centerY);
+      
+      container.scrollLeft = Math.max(0, newScrollLeft);
+      container.scrollTop = Math.max(0, newScrollTop);
+    }
+    
+    // Update local scroll immediately
+    window.requestAnimationFrame(() => {
+      updateLocalScrollPosition();
+    });
+  }, [updateLocalScrollPosition]);
+
+  const zoomIn = useCallback(() => {
+    const viewer = pdfViewerRef.current;
+    if (!viewer) return;
+    let newScale = viewer.currentScale;
+    do {
+      newScale = Math.round(newScale * 1.1 * 10) / 10;
+    } while (newScale === viewer.currentScale && newScale < 10);
+    zoomTo(newScale, 'viewport');
+  }, [zoomTo]);
+
+  const zoomOut = useCallback(() => {
+    const viewer = pdfViewerRef.current;
+    if (!viewer) return;
+    let newScale = viewer.currentScale;
+    do {
+      newScale = Math.round(newScale / 1.1 * 10) / 10;
+    } while (newScale === viewer.currentScale && newScale > 0.1);
+    zoomTo(newScale, 'viewport');
+  }, [zoomTo]);
+
+
   const primeSavedScrollPage = useCallback((pdfViewer: any, pagesCount?: number) => {
     const page = getSavedScrollPage(pagesCount);
 
@@ -844,6 +969,7 @@ function PdfViewer({
   }, [getSavedScrollPage]);
 
   const restoreSavedScroll = useCallback((options?: { force?: boolean }) => {
+    if (isZoomingRef.current) return;
     const force = Boolean(options?.force);
 
     if (!force && Date.now() - lastUserScrollAtRef.current < USER_SCROLL_RESTORE_GUARD_MS) {
@@ -1159,6 +1285,30 @@ function PdfViewer({
     container.addEventListener('keydown', cancelPendingExternalRestore);
     container.addEventListener('scroll', handleScroll, { passive: true });
 
+    const handleWheel = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        const viewer = pdfViewerRef.current;
+        if (!viewer) return;
+        
+        let newScale = viewer.currentScale;
+        if (e.deltaY < 0) {
+          do {
+            newScale = Math.round(newScale * 1.1 * 10) / 10;
+          } while (newScale === viewer.currentScale && newScale < 10);
+        } else {
+          do {
+            newScale = Math.round(newScale / 1.1 * 10) / 10;
+          } while (newScale === viewer.currentScale && newScale > 0.1);
+        }
+        
+        zoomTo(newScale, 'mouse', e as any);
+      }
+    };
+    container.addEventListener('wheel', handleWheel, { passive: false, capture: true });
+
+
     return () => {
       if (trailingTimer !== 0) {
         window.clearTimeout(trailingTimer);
@@ -1169,6 +1319,7 @@ function PdfViewer({
       }
 
       container.removeEventListener('scroll', handleScroll);
+      container.removeEventListener('wheel', handleWheel as any, { capture: true } as any);
       container.removeEventListener('wheel', cancelPendingExternalRestore);
       container.removeEventListener('pointerdown', cancelPendingExternalRestore);
       container.removeEventListener('keydown', cancelPendingExternalRestore);
@@ -2691,8 +2842,8 @@ function PdfViewer({
         onEditorToolChange={setEditorTool}
         onScrollToPage={scrollToPage}
         onToggleReadingHeatmapBar={() => setReadingHeatmapBarVisible((current) => !current)}
-        onZoomIn={() => pdfViewerRef.current?.increaseScale?.()}
-        onZoomOut={() => pdfViewerRef.current?.decreaseScale?.()}
+        onZoomIn={zoomIn}
+        onZoomOut={zoomOut}
         pageCount={pageCount}
         readingHeatmapToggleLabel={readingHeatmapToggleLabel}
         showReadingHeatmapBar={showReadingHeatmapBar}

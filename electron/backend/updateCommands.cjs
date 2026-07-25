@@ -1,5 +1,5 @@
 const UPDATE_REPOSITORY = {
-  owner: 'WangQrkkk',
+  owner: 'qqcqqqc',
   repo: 'PaperQuay',
 };
 const UPDATE_CHANNEL = 'stable';

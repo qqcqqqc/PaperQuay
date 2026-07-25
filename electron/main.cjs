@@ -1,5 +1,5 @@
 const path = require('node:path');
-const { app, BrowserWindow, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, nativeImage, shell } = require('electron');
 const { createBackend } = require('./backend.cjs');
 const {
   registerLocalPdfProtocol,
@@ -20,10 +20,10 @@ function getBackend() {
 }
 
 function getAppIconPath() {
-  const iconFileName = process.platform === 'win32' ? 'icon.ico' : 'icon.png';
+  const iconFileName = process.platform === 'win32' ? 'icon.png' : 'icon.png';
   const iconRoot = app.isPackaged ? 'dist' : 'public';
-
-  return path.join(__dirname, '..', iconRoot, iconFileName);
+  const iconPath = path.join(__dirname, '..', iconRoot, iconFileName);
+  return nativeImage.createFromPath(iconPath);
 }
 
 function shouldIgnoreRendererConsoleMessage(level, message) {
@@ -34,6 +34,7 @@ function shouldIgnoreRendererConsoleMessage(level, message) {
 }
 
 function createWindow() {
+  const appIcon = getAppIconPath();
   const mainWindow = new BrowserWindow({
     width: 1440,
     height: 920,
@@ -42,7 +43,7 @@ function createWindow() {
     title: 'PaperQuay',
     frame: false,
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
-    icon: getAppIconPath(),
+    icon: appIcon,
     backgroundColor: '#eef2f8',
     show: false,
     webPreferences: {
